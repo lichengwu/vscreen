@@ -18,7 +18,8 @@
 #   vscreen off                   # 断开所有虚拟屏、解除镜像（恢复纯物理显示）
 #   vscreen status                # 查看当前所有显示器状态
 #   vscreen list                  # 列出支持的设备与三档分辨率
-#   vscreen update                # 从 GitHub 自更新
+#   vscreen update                # 从 GitHub 自更新（检测版本，相同则跳过）
+#   vscreen version               # 查看版本号
 #   vscreen -h | --help           # 帮助
 #
 # 选项：
@@ -33,6 +34,7 @@ set -euo pipefail
 BD="/Applications/BetterDisplay.app/Contents/MacOS/BetterDisplay"
 REPO="lichengwu/vscreen"
 RAW_URL="https://raw.githubusercontent.com/$REPO/main/vscreen"
+VERSION="1.0.0"
 
 # 本工具管理的唯一虚拟屏名（= “本工具创建”的身份标识，固定不变）
 SCREEN_NAME="vscreen"
@@ -77,9 +79,9 @@ DEVICE_ORDER=(mba13 mba15 mbp14 mbp16 imac24 studio xdr ipadpro13 ipadpro129 ipa
 
 # ---------- 帮助 ----------
 print_help() {
+  echo "vscreen v$VERSION — headless Mac 虚拟屏，匹配远程客户端设备（RustDesk 友好）"
+  echo
   cat <<'EOF'
-vscreen — headless Mac 虚拟屏，匹配远程客户端设备（RustDesk 友好）
-
 用法：
   vscreen <设备>              匹配设备，用补偿档（全屏无黑边，默认）
   vscreen <设备>-native       用原生逻辑分辨率
@@ -88,7 +90,8 @@ vscreen — headless Mac 虚拟屏，匹配远程客户端设备（RustDesk 友�
   vscreen off                 断开所有虚拟屏、解除镜像
   vscreen status              查看当前显示器状态
   vscreen list                列出支持的设备与三档分辨率
-  vscreen update              从 GitHub 自更新
+  vscreen update              检测并自更新（已是最新则跳过）
+  vscreen version             查看版本号
   vscreen -h | --help         显示本帮助
 
 选项：
@@ -143,20 +146,22 @@ NO_MIRROR=false
 ARG=""
 for a in "$@"; do
   case "$a" in
-    --no-mirror) NO_MIRROR=true ;;
-    -h|--help)   usage ;;
-    *)           ARG="$a" ;;
+    --no-mirror)   NO_MIRROR=true ;;
+    -h|--help)     usage ;;
+    -v|--version)  ARG="version" ;;
+    *)             ARG="$a" ;;
   esac
 done
 
 MODE="apply"
 S_LIST=""; S_RES=""
 case "$ARG" in
-  "")         die "缺少参数（<设备|WxH|off|status|list|update>）" ;;
+  "")         die "缺少参数（<设备|WxH|off|status|list|update|version>）" ;;
   off|none)   MODE="off" ;;
   status)     MODE="status" ;;
   list)       MODE="list" ;;
   update)     MODE="update" ;;
+  version)    MODE="version" ;;
   *)
     if [[ "$ARG" =~ ^[0-9]+x[0-9]+$ ]]; then
       # 直接给分辨率：列表里只放这一档
@@ -164,7 +169,7 @@ case "$ARG" in
     elif resolve_device "$ARG"; then
       :  # S_LIST / S_RES 已由 resolve_device 设置
     else
-      die "未知参数 \"$ARG\"（应为设备别名、WxH 或 off/status/list/update）"
+      die "未知参数 \"$ARG\"（应为设备别名、WxH 或 off/status/list/update/version）"
     fi
     ;;
 esac
@@ -367,20 +372,32 @@ do_off() {
 }
 
 do_update() {
-  local tmp
+  local tmp remote_ver
   tmp=$(mktemp)
-  echo "从 GitHub 更新 ..."
+  echo "检查更新 ..."
   curl -fsSL "$RAW_URL" -o "$tmp" || { echo "错误：下载失败（$RAW_URL）" >&2; rm -f "$tmp"; exit 1; }
+  remote_ver=$(sed -n 's/^VERSION="\([^"]*\)".*/\1/p' "$tmp" | head -1)
+  if [[ -z "$remote_ver" ]]; then
+    echo "⚠️  无法解析远端版本号，跳过更新" >&2
+    rm -f "$tmp"
+    return
+  fi
+  if [[ "$remote_ver" == "$VERSION" ]]; then
+    echo "已是最新版本 v$VERSION ✅"
+    rm -f "$tmp"
+    return
+  fi
   chmod +x "$tmp"
   mv "$tmp" "$0"
-  echo "已更新到最新版本 ✅"
+  echo "已更新 v$VERSION -> v$remote_ver ✅（重新运行即生效）"
 }
 
 # ---------- 执行 ----------
 case "$MODE" in
-  apply)  do_apply ;;
-  off)    do_off ;;
-  status) ensure_bd; show_status ;;
-  list)   do_list ;;
-  update) do_update ;;
+  apply)   do_apply ;;
+  off)     do_off ;;
+  status)  ensure_bd; show_status ;;
+  list)    do_list ;;
+  update)  do_update ;;
+  version) echo "vscreen v$VERSION" ;;
 esac

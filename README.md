@@ -27,7 +27,7 @@ curl -fsSL https://raw.githubusercontent.com/lichengwu/vscreen/main/install.sh |
 
 This checks dependencies ([BetterDisplay](https://betterdisplay.pro), `python3`),
 installs the `vscreen` CLI into your PATH, and runs a verification. Later,
-`vscreen update` pulls the latest version from GitHub.
+`vscreen update` pulls the latest version from GitHub (and skips if already latest).
 
 > Manual alternative: `git clone https://github.com/lichengwu/vscreen.git && cd vscreen && ./install.sh`
 
@@ -42,7 +42,8 @@ vscreen ipadpro13         # match iPad Pro 13" (full-bleed, 4:3)
 vscreen 1512x945          # set by raw WxH (HiDPI)
 vscreen off               # disconnect virtual screens, restore physical
 vscreen status            # current display state
-vscreen update            # self-update
+vscreen update            # self-update (skips if already latest)
+vscreen version           # print version
 vscreen -h | --help       # help
 ```
 

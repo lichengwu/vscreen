@@ -22,7 +22,7 @@ curl -fsSL https://raw.githubusercontent.com/lichengwu/vscreen/main/install.sh |
 ```
 
 检查依赖（[BetterDisplay](https://betterdisplay.pro)、`python3`）→ 装进 PATH → 运行验证。
-之后可用 `vscreen update` 自更新。
+之后可用 `vscreen update` 自更新（已是最新则跳过）。
 
 > 手动方式：`git clone https://github.com/lichengwu/vscreen.git && cd vscreen && ./install.sh`
 
@@ -37,7 +37,8 @@ vscreen ipadpro13         # 匹配 iPad Pro 13（满血 4:3）
 vscreen 1512x945          # 直接按分辨率设置（HiDPI）
 vscreen off               # 断开所有虚拟屏、解除镜像
 vscreen status            # 当前显示器状态
-vscreen update            # 自更新
+vscreen update            # 自更新（已是最新则跳过）
+vscreen version            # 查看版本号
 vscreen -h | --help       # 帮助
 ```
 
