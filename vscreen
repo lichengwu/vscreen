@@ -42,13 +42,17 @@ SCREEN_NAME="vscreen"
 #   compensated = native 高度 − 菜单栏（刘海机型 37pt，普通机型 24pt）
 typeset -A DEVICES
 DEVICES=(
-  mba13   "MacBook Air 13|1280x832|1280x808|2560x1664"
-  mba15   "MacBook Air 15|1440x932|1440x908|2880x1864"
-  mbp14   "MacBook Pro 14|1512x982|1512x945|3024x1964"
-  mbp16   "MacBook Pro 16|1728x1117|1728x1080|3456x2234"
-  imac24  "iMac 24|2240x1260|2240x1236|4480x2520"
-  studio  "Studio Display|2560x1440|2560x1416|5120x2880"
-  xdr     "Pro Display XDR|3008x1692|3008x1668|6016x3384"
+  mba13     "MacBook Air 13|1280x832|1280x808|2560x1664"
+  mba15     "MacBook Air 15|1440x932|1440x908|2880x1864"
+  mbp14     "MacBook Pro 14|1512x982|1512x945|3024x1964"
+  mbp16     "MacBook Pro 16|1728x1117|1728x1080|3456x2234"
+  imac24    "iMac 24|2240x1260|2240x1236|4480x2520"
+  studio    "Studio Display|2560x1440|2560x1416|5120x2880"
+  xdr       "Pro Display XDR|3008x1692|3008x1668|6016x3384"
+  # iPad：iPadOS 全屏满血无菜单栏，故 compensated == native（不减）
+  ipadpro13  "iPad Pro 13|1376x1032|1376x1032|2752x2064"
+  ipadpro129 "iPad Pro 12.9|1366x1024|1366x1024|2732x2048"
+  ipadair13  "iPad Air 13|1366x1024|1366x1024|2732x2048"
 )
 
 # 设备别名同义词
@@ -59,12 +63,17 @@ SYNONYMS=(
   pro14      mbp14
   pro16      mbp16
   imac       imac24
-  prodisplay xdr
-  xdr6k      xdr
+  prodisplay  xdr
+  xdr6k       xdr
+  # iPad 同义词
+  pro13       ipadpro13
+  pro129      ipadpro129
+  ipadair     ipadair13
+  ipad13      ipadair13
 )
 
 # 列表展示用的稳定顺序
-DEVICE_ORDER=(mba13 mba15 mbp14 mbp16 imac24 studio xdr)
+DEVICE_ORDER=(mba13 mba15 mbp14 mbp16 imac24 studio xdr ipadpro13 ipadpro129 ipadair13)
 
 # ---------- 帮助 ----------
 print_help() {
@@ -86,14 +95,17 @@ vscreen — headless Mac 虚拟屏，匹配远程客户端设备（RustDesk 友�
   --no-mirror                 不镜像物理屏（保持扩展桌面模式）
 
 设备别名：
-  mba13   MacBook Air 13"      mba15   MacBook Air 15"
-  mbp14   MacBook Pro 14"       mbp16   MacBook Pro 16"
-  imac24  iMac 24"              studio  Studio Display
-  xdr     Pro Display XDR
+  mba13      MacBook Air 13"      mba15      MacBook Air 15"
+  mbp14      MacBook Pro 14"      mbp16      MacBook Pro 16"
+  imac24     iMac 24"            studio     Studio Display
+  xdr        Pro Display XDR
+  ipadpro13  iPad Pro 13"        ipadpro129 iPad Pro 12.9"
+  ipadair13  iPad Air 13"
 
 示例：
   vscreen mbp14                # 从 MacBook Pro 14 远程 → 1512x945
   vscreen mbp16-native         # MacBook Pro 16 原生逻辑 1728x1117
+  vscreen ipadpro13            # 从 iPad Pro 13 远程 → 1376x1032
   vscreen 1280x808             # 直接给分辨率
 
 项目：https://github.com/lichengwu/vscreen
