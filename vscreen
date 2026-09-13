@@ -1,0 +1,374 @@
+#!/bin/zsh
+# ============================================================================
+# vscreen — headless Mac 虚拟屏，匹配远程客户端设备（RustDesk 友好）
+#
+# 永远只维护一块名为 "vscreen" 的虚拟屏：切换设备/分辨率时复用同一块、
+# 覆盖分辨率列表与活动档，绝不新建。这个名字本身就是“本工具创建”的标识。
+#
+# 选定设备/分辨率后自动完成：
+#   1. 确保名为 "vscreen" 的虚拟屏存在并连接（其他虚拟屏自动断开，远程端只见一块屏）
+#   2. 设置匹配分辨率（HiDPI，默认全屏补偿档，消除黑边）
+#   3. 设为主显示器；默认把其他物理显示器镜像到它（--no-mirror 可关闭）
+#
+# 用法：
+#   vscreen <设备别名>            # 补偿档（默认，全屏无黑边）
+#   vscreen <设备别名>-native      # 原生逻辑分辨率
+#   vscreen <设备别名>-full        # 1:1 物理档
+#   vscreen <WxH>                 # 直接按分辨率设置（如 1512x945，HiDPI）
+#   vscreen off                   # 断开所有虚拟屏、解除镜像（恢复纯物理显示）
+#   vscreen status                # 查看当前所有显示器状态
+#   vscreen list                  # 列出支持的设备与三档分辨率
+#   vscreen update                # 从 GitHub 自更新
+#   vscreen -h | --help           # 帮助
+#
+# 选项：
+#   --no-mirror                   # 不镜像物理显示器（保持扩展桌面模式）
+#
+# 依赖：BetterDisplay（/Applications/BetterDisplay.app）、python3、zsh
+# 项目：https://github.com/lichengwu/vscreen
+# ============================================================================
+
+set -euo pipefail
+
+BD="/Applications/BetterDisplay.app/Contents/MacOS/BetterDisplay"
+REPO="lichengwu/vscreen"
+RAW_URL="https://raw.githubusercontent.com/$REPO/main/vscreen"
+
+# 本工具管理的唯一虚拟屏名（= “本工具创建”的身份标识，固定不变）
+SCREEN_NAME="vscreen"
+
+# --- 设备 → 分辨率映射表（增删设备改这里）---
+# 格式：别名="设备名|native 逻辑|compensated 补偿|full 1:1"
+#   compensated = native 高度 − 菜单栏（刘海机型 37pt，普通机型 24pt）
+typeset -A DEVICES
+DEVICES=(
+  mba13   "MacBook Air 13|1280x832|1280x808|2560x1664"
+  mba15   "MacBook Air 15|1440x932|1440x908|2880x1864"
+  mbp14   "MacBook Pro 14|1512x982|1512x945|3024x1964"
+  mbp16   "MacBook Pro 16|1728x1117|1728x1080|3456x2234"
+  imac24  "iMac 24|2240x1260|2240x1236|4480x2520"
+  studio  "Studio Display|2560x1440|2560x1416|5120x2880"
+  xdr     "Pro Display XDR|3008x1692|3008x1668|6016x3384"
+)
+
+# 设备别名同义词
+typeset -A SYNONYMS
+SYNONYMS=(
+  air13      mba13
+  air15      mba15
+  pro14      mbp14
+  pro16      mbp16
+  imac       imac24
+  prodisplay xdr
+  xdr6k      xdr
+)
+
+# 列表展示用的稳定顺序
+DEVICE_ORDER=(mba13 mba15 mbp14 mbp16 imac24 studio xdr)
+
+# ---------- 帮助 ----------
+print_help() {
+  cat <<'EOF'
+vscreen — headless Mac 虚拟屏，匹配远程客户端设备（RustDesk 友好）
+
+用法：
+  vscreen <设备>              匹配设备，用补偿档（全屏无黑边，默认）
+  vscreen <设备>-native       用原生逻辑分辨率
+  vscreen <设备>-full         用 1:1 物理档
+  vscreen <WxH>               直接按分辨率设置（如 1512x945）
+  vscreen off                 断开所有虚拟屏、解除镜像
+  vscreen status              查看当前显示器状态
+  vscreen list                列出支持的设备与三档分辨率
+  vscreen update              从 GitHub 自更新
+  vscreen -h | --help         显示本帮助
+
+选项：
+  --no-mirror                 不镜像物理屏（保持扩展桌面模式）
+
+设备别名：
+  mba13   MacBook Air 13"      mba15   MacBook Air 15"
+  mbp14   MacBook Pro 14"       mbp16   MacBook Pro 16"
+  imac24  iMac 24"              studio  Studio Display
+  xdr     Pro Display XDR
+
+示例：
+  vscreen mbp14                # 从 MacBook Pro 14 远程 → 1512x945
+  vscreen mbp16-native         # MacBook Pro 16 原生逻辑 1728x1117
+  vscreen 1280x808             # 直接给分辨率
+
+项目：https://github.com/lichengwu/vscreen
+EOF
+}
+
+usage() { print_help; exit 0; }
+die() { echo; echo "错误：$1" >&2; echo >&2; print_help >&2; exit 1; }
+
+# ---------- 解析设备别名 → 设置 S_LIST / S_RES ----------
+# 返回 0 成功，1 未识别。export S_LIST S_RES 给调用方。
+resolve_device() {
+  local key="$1" suffix=""
+  # 剥离 -native / -full 后缀
+  if [[ "$key" == *"-native" ]]; then suffix="native"; key="${key%-native}"
+  elif [[ "$key" == *"-full" ]]; then suffix="full"; key="${key%-full}"; fi
+  # 同义词归一
+  [[ -n "${SYNONYMS[$key]:-}" ]] && key="${SYNONYMS[$key]}"
+  local entry="${DEVICES[$key]:-}"
+  [[ -z "$entry" ]] && return 1
+
+  local -a parts=("${(@s/|/)entry}")
+  local name="${parts[1]}" native="${parts[2]}" comp="${parts[3]}" full="${parts[4]}"
+  case "$suffix" in
+    native) S_RES="$native" ;;
+    full)   S_RES="$full" ;;
+    *)      S_RES="$comp" ;;
+  esac
+  S_LIST="$comp,$native,$full"
+  return 0
+}
+
+# --- 参数解析 ---
+NO_MIRROR=false
+ARG=""
+for a in "$@"; do
+  case "$a" in
+    --no-mirror) NO_MIRROR=true ;;
+    -h|--help)   usage ;;
+    *)           ARG="$a" ;;
+  esac
+done
+
+MODE="apply"
+S_LIST=""; S_RES=""
+case "$ARG" in
+  "")         die "缺少参数（<设备|WxH|off|status|list|update>）" ;;
+  off|none)   MODE="off" ;;
+  status)     MODE="status" ;;
+  list)       MODE="list" ;;
+  update)     MODE="update" ;;
+  *)
+    if [[ "$ARG" =~ ^[0-9]+x[0-9]+$ ]]; then
+      # 直接给分辨率：列表里只放这一档
+      S_RES="$ARG"; S_LIST="$ARG"
+    elif resolve_device "$ARG"; then
+      :  # S_LIST / S_RES 已由 resolve_device 设置
+    else
+      die "未知参数 \"$ARG\"（应为设备别名、WxH 或 off/status/list/update）"
+    fi
+    ;;
+esac
+
+# ---------- BetterDisplay 前置检查 ----------
+ensure_bd() {
+  if [[ ! -x "$BD" ]]; then
+    echo "错误：未找到 BetterDisplay CLI（$BD）" >&2
+    echo "安装：brew install --cask betterdisplay 或 https://betterdisplay.pro" >&2
+    exit 1
+  fi
+  # BetterDisplay 未运行则启动（CLI 依赖主进程）
+  if ! pgrep -x BetterDisplay >/dev/null; then
+    echo "启动 BetterDisplay ..."
+    open -a BetterDisplay
+    sleep 5
+  fi
+}
+
+# ---------- 工具函数 ----------
+# 注意：被 $( ) 捕获的函数只能向 stdout 输出返回值，日志一律走 stderr
+
+# 列出所有显示器：tagID<TAB>类型<TAB>名称
+list_displays() {
+  "$BD" get --identifiers 2>/dev/null | python3 -c '
+import sys, json, re
+raw = sys.stdin.read()
+for m in re.finditer(r"\{[^{}]*\}", raw, re.S):
+    try:
+        o = json.loads(m.group(0))
+    except Exception:
+        continue
+    print("%s\t%s\t%s" % (o.get("tagID", ""), o.get("deviceType", ""), o.get("name", "")))
+'
+}
+
+# 按名称查找虚拟屏 tagID
+find_tag() {
+  list_displays | awk -F'\t' -v n="$1" '$2=="VirtualScreen" && $3==n {print $1; exit}'
+}
+
+# 除指定名称外的虚拟屏 tagID 列表
+virtual_tags_except() {
+  list_displays | awk -F'\t' -v n="$1" '$2=="VirtualScreen" && $3!=n {print $1}'
+}
+
+# 物理显示器 tagID 列表
+physical_tags() {
+  list_displays | awk -F'\t' '$2=="Display" {print $1}'
+}
+
+# 读取虚拟屏当前档位（只取列表内的 WxH；无匹配返回空）
+get_current_res() {
+  local tag=$1 list=$2 r
+  for r in $( "$BD" get -tagID="$tag" -resolution 2>/dev/null | grep -oE '[0-9]+x[0-9]+' || true ); do
+    if [[ "$list" == *"$r"* ]]; then
+      echo "$r"
+      return 0
+    fi
+  done
+  return 0
+}
+
+# 单值查询（失败返回 "-"）
+qget() {
+  local v
+  v=$("$BD" get -tagID="$1" "$2" 2>/dev/null || true)
+  echo "${v:-"-"}"
+}
+
+# 状态总览
+show_status() {
+  echo "当前显示器状态："
+  list_displays | while IFS=$'\t' read -r tag type name; do
+    [[ -z "$tag" ]] && continue
+    res=$("$BD" get -tagID="$tag" -resolution 2>/dev/null | grep -oE '[0-9]+x[0-9]+' | head -1 || true)
+    printf "  %-20s %-13s %-10s main=%-6s mirror=%s\n" \
+      "$name" "[$type]" "${res:--}" \
+      "$(qget "$tag" -main)" \
+      "$(qget "$tag" -mirror)"
+  done
+}
+
+# 解除一块屏的镜像（静默容忍）
+unmirror() {
+  "$BD" set -tagID="$1" -mirror=off >/dev/null 2>&1 || true
+}
+
+# ---------- 模式实现 ----------
+
+do_list() {
+  echo "支持的设备（默认用 compensated 补偿档，全屏无黑边）："
+  echo
+  printf "  %-8s %-20s %-16s %-16s %s\n" "别名" "设备" "compensated" "native" "full(1:1)"
+  local key entry
+  for key in "${DEVICE_ORDER[@]}"; do
+    entry="${DEVICES[$key]}"
+    local -a parts=("${(@s/|/)entry}")
+    printf "  %-8s %-20s %-16s %-16s %s\n" \
+      "$key" "${parts[1]}" "${parts[3]}" "${parts[2]}" "${parts[4]}"
+  done
+  echo
+  echo "用法：vscreen <别名> | <别名>-native | <别名>-full | <WxH>"
+  echo "示例：vscreen mbp14         # 1512x945（补偿档）"
+  echo "      vscreen mbp14-native  # 1512x982（原生逻辑）"
+  echo "      vscreen 1512x945      # 直接按分辨率"
+}
+
+do_apply() {
+  ensure_bd
+  local tag cur
+
+  # 1. 确保名为 "vscreen" 的虚拟屏存在（复用，绝不新建第二块）
+  tag=$(find_tag "$SCREEN_NAME")
+  if [[ -z "$tag" ]]; then
+    echo "创建虚拟屏 \"$SCREEN_NAME\" ..."
+    "$BD" create -type=VirtualScreen \
+      -virtualScreenName="$SCREEN_NAME" \
+      -useResolutionList=on \
+      -resolutionList="$S_LIST" \
+      -virtualScreenHiDPI=on
+    sleep 2
+    tag=$(find_tag "$SCREEN_NAME")
+    if [[ -z "$tag" ]]; then
+      echo "错误：\"$SCREEN_NAME\" 创建后未能定位" >&2
+      exit 1
+    fi
+  else
+    # 已存在 → 复用：整体覆盖分辨率列表（切换设备时更新模板，不新建）
+    "$BD" set -tagID="$tag" -resolutionList="$S_LIST" >/dev/null 2>&1 || true
+    sleep 1
+  fi
+
+  # 2. 连接目标虚拟屏，断开其他虚拟屏（远程端只看到一块屏）
+  "$BD" set -tagID="$tag" -connected=on >/dev/null 2>&1 || true
+  local others
+  others=$(virtual_tags_except "$SCREEN_NAME")
+  if [[ -n "$others" ]]; then
+    echo "断开其他虚拟屏 ..."
+    for t in $others; do
+      "$BD" set -tagID="$t" -connected=off >/dev/null 2>&1 || true
+    done
+    sleep 2
+  fi
+
+  # 3. 设置分辨率（CLI 怪癖：设相同分辨率返回 Failed，只在变化时设置）
+  cur=$(get_current_res "$tag" "$S_LIST")
+  if [[ "$cur" != "$S_RES" ]]; then
+    echo "设置分辨率：${cur:-?} -> $S_RES (HiDPI)"
+    "$BD" set -tagID="$tag" -resolution="$S_RES" -hiDPI=on
+    sleep 2
+  fi
+
+  # 4. 清掉所有现有镜像，避免残留镜像组干扰
+  local alltags
+  alltags=$(list_displays | cut -f1)
+  for t in $alltags; do unmirror "$t"; done
+  sleep 2
+
+  # 5. 设为主显示器
+  echo "设置 \"$SCREEN_NAME\" 为主显示器 ..."
+  "$BD" set -tagID="$tag" -main=on
+  sleep 1
+
+  # 6. 镜像物理显示器到虚拟屏（镜像语义：在主屏上调用，target 指向被镜像屏）
+  if [[ "$NO_MIRROR" == "false" ]]; then
+    local phys
+    phys=$(physical_tags)
+    for p in $phys; do
+      echo "镜像物理屏 tagID=$p -> $SCREEN_NAME"
+      "$BD" set -tagID="$tag" -mirror=on -targetTagID="$p" >/dev/null 2>&1 || true
+      sleep 1
+    done
+  fi
+
+  echo
+  echo "完成 ✅ \"$SCREEN_NAME\" = $S_RES（主屏$( [[ $NO_MIRROR == false ]] && echo '，物理屏已镜像' || echo '，扩展模式')）"
+  echo
+  show_status
+}
+
+do_off() {
+  ensure_bd
+  echo "恢复纯物理显示（断开虚拟屏、解除镜像）..."
+  local alltags vtags phys
+  alltags=$(list_displays | cut -f1)
+  for t in $alltags; do unmirror "$t"; done
+  sleep 2
+  vtags=$(list_displays | awk -F'\t' '$2=="VirtualScreen" {print $1}')
+  for t in $vtags; do
+    "$BD" set -tagID="$t" -connected=off >/dev/null 2>&1 || true
+  done
+  phys=$(physical_tags | head -1)
+  if [[ -n "$phys" ]]; then
+    "$BD" set -tagID="$phys" -main=on >/dev/null 2>&1 || true
+  fi
+  echo "完成 ✅"
+  echo
+  show_status
+}
+
+do_update() {
+  local tmp
+  tmp=$(mktemp)
+  echo "从 GitHub 更新 ..."
+  curl -fsSL "$RAW_URL" -o "$tmp" || { echo "错误：下载失败（$RAW_URL）" >&2; rm -f "$tmp"; exit 1; }
+  chmod +x "$tmp"
+  mv "$tmp" "$0"
+  echo "已更新到最新版本 ✅"
+}
+
+# ---------- 执行 ----------
+case "$MODE" in
+  apply)  do_apply ;;
+  off)    do_off ;;
+  status) ensure_bd; show_status ;;
+  list)   do_list ;;
+  update) do_update ;;
+esac
