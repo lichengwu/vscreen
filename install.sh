@@ -11,7 +11,7 @@
 set -euo pipefail
 
 SCRIPT_NAME="mbscreens"
-REPO="lichengwu/macbook-screens"
+REPO="lichengwu/headless-display"
 RAW_URL="https://raw.githubusercontent.com/$REPO/main/$SCRIPT_NAME"
 SRC_LOCAL="$(cd "$(dirname "$0")" && pwd)/$SCRIPT_NAME"
 

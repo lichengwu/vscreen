@@ -23,13 +23,13 @@
 #   --no-mirror               # 不镜像物理显示器（保持扩展桌面模式）
 #
 # 依赖：BetterDisplay（/Applications/BetterDisplay.app）、python3、zsh
-# 项目：https://github.com/lichengwu/macbook-screens
+# 项目：https://github.com/lichengwu/headless-display
 # ============================================================================
 
 set -euo pipefail
 
 BD="/Applications/BetterDisplay.app/Contents/MacOS/BetterDisplay"
-REPO="lichengwu/macbook-screens"
+REPO="lichengwu/headless-display"
 RAW_URL="https://raw.githubusercontent.com/$REPO/main/mbscreens"
 
 # --- 虚拟屏定义（增删档位改这里）---

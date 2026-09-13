@@ -42,8 +42,8 @@ doesn't reserve the menu-bar area.
 ## Install
 
 ```bash
-git clone https://github.com/lichengwu/macbook-screens.git
-cd macbook-screens
+git clone https://github.com/lichengwu/headless-display.git
+cd headless-display
 ./install.sh
 ```
 
@@ -90,8 +90,8 @@ verification. Later, `mbscreens update` pulls the latest version from GitHub.
 安装：
 
 ```bash
-git clone https://github.com/lichengwu/macbook-screens.git
-cd macbook-screens && ./install.sh
+git clone https://github.com/lichengwu/headless-display.git
+cd headless-display && ./install.sh
 ```
 
 用法与原理详见上方英文部分。
