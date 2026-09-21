@@ -34,7 +34,7 @@ set -euo pipefail
 BD="/Applications/BetterDisplay.app/Contents/MacOS/BetterDisplay"
 REPO="lichengwu/vscreen"
 RAW_URL="https://raw.githubusercontent.com/$REPO/main/vscreen"
-VERSION="1.0.0"
+VERSION="1.0.1"
 
 # 本工具管理的唯一虚拟屏名（= “本工具创建”的身份标识，固定不变）
 SCREEN_NAME="vscreen"
@@ -42,10 +42,13 @@ SCREEN_NAME="vscreen"
 # --- 设备 → 分辨率映射表（增删设备改这里）---
 # 格式：别名="设备名|native 逻辑|compensated 补偿|full 1:1"
 #   compensated = native 高度 − 菜单栏（刘海机型 37pt，普通机型 24pt）
+#   ⚠️ MacBook Air（M2+）：出厂默认档是“缩放档”而非 2x 逻辑——
+#      mba13 默认 1470x956（非 1280x832），mba15 默认 1710x1107（非 1440x932）。
+#      且 M2+ Air 有刘海：菜单栏按默认缩放换算 37pt(13")/38pt(15")。
 typeset -A DEVICES
 DEVICES=(
-  mba13     "MacBook Air 13|1280x832|1280x808|2560x1664"
-  mba15     "MacBook Air 15|1440x932|1440x908|2880x1864"
+  mba13     "MacBook Air 13|1470x956|1470x919|2560x1664"
+  mba15     "MacBook Air 15|1710x1107|1710x1069|2880x1864"
   mbp14     "MacBook Pro 14|1512x982|1512x945|3024x1964"
   mbp16     "MacBook Pro 16|1728x1117|1728x1080|3456x2234"
   imac24    "iMac 24|2240x1260|2240x1236|4480x2520"
@@ -109,7 +112,7 @@ print_help() {
   vscreen mbp14                # 从 MacBook Pro 14 远程 → 1512x945
   vscreen mbp16-native         # MacBook Pro 16 原生逻辑 1728x1117
   vscreen ipadpro13            # 从 iPad Pro 13 远程 → 1376x1032
-  vscreen 1280x808             # 直接给分辨率
+  vscreen 1470x919             # 直接给分辨率
 
 项目：https://github.com/lichengwu/vscreen
 EOF

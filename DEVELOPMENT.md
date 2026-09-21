@@ -39,7 +39,7 @@ Each device has four `|`-separated fields:
 | Field | Meaning |
 | --- | --- |
 | name | Display name shown in BetterDisplay / macOS settings (display only) |
-| **native** | panel's native **logical** resolution = native pixels ÷ scale (Retina usually ÷2) |
+| **native** | the device's factory-default **logical** resolution (what macOS "looks like" by default). For most Retina Macs that's native pixels ÷ 2 — **except MacBook Air (M2+)**, which defaults to a *scaled* mode: 1470x956 (13.6") / 1710x1107 (15.3"), NOT pixels ÷ 2 |
 | **compensated** | fullscreen-compensated tier = native height − client menu-bar; the default |
 | **full** | 1:1 native pixels |
 
@@ -58,21 +58,29 @@ compensated = native_height − menubar
 ```
 
 - Notched Macs (MBP 14/16): menubar = **37pt** (24 bar + 13 notch)
-- Non-notched (MacBook Air / iMac / Studio / XDR): menubar = **24pt**
+- MacBook Air (M2+): also notched — notch band is 64 physical px above the
+  16:10 frame; in logical points at the default scaled mode that's ≈ **37pt**
+  (13.6") / ≈ **38pt** (15.3")
+- Non-notched (iMac / Studio / XDR): menubar = **24pt**
 - iPad: iPadOS fullscreen is full-bleed → menubar = **0**, so `compensated == native`
 
 ## 4. Add a device (example: a 27" 5K monitor)
 
 1. **Find the native pixels** from Apple's spec page or the vendor. Say 5120×2880.
-2. **Compute the tiers:**
-   - native logical = 5120÷2 × 2880÷2 = `2560x1440`
+2. **Find the factory-default "looks like" resolution** for that device. For most
+   Retina Macs it's simply pixels ÷ 2, but **MacBook Airs (M2+) ship a scaled
+   default** (1470x956 / 1710x1107). `native` must be the *default* mode — not
+   blind pixels ÷ 2 — or the remote picture gets zoomed ~15% (that was the
+   mba13/mba15 bug fixed in v1.0.1).
+3. **Compute the tiers:**
+   - native logical = the default "looks like" resolution, e.g. `2560x1440`
    - menubar = 24 → compensated = `2560x1416` (1440−24)
    - full = `5120x2880`
-3. **Add to `DEVICES`:** `mydisp "My Display 27|2560x1440|2560x1416|5120x2880"`
-4. **(Optional) synonyms** in `SYNONYMS`, e.g. `my27 mydisp`.
-5. **Add to `DEVICE_ORDER`** so `vscreen list` shows it.
-6. **Update user docs:** add a row to both `README.md` and `README.zh-CN.md`.
-7. **Verify** (next section).
+4. **Add to `DEVICES`:** `mydisp "My Display 27|2560x1440|2560x1416|5120x2880"`
+5. **(Optional) synonyms** in `SYNONYMS`, e.g. `my27 mydisp`.
+6. **Add to `DEVICE_ORDER`** so `vscreen list` shows it.
+7. **Update user docs:** add a row to both `README.md` and `README.zh-CN.md`.
+8. **Verify** (next section).
 
 ## 5. Verification
 

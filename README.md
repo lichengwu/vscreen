@@ -10,7 +10,7 @@ black-bar-free picture.
 ```bash
 vscreen mbp14        # remote from a MacBook Pro 14"  -> 1512x945
 vscreen ipadpro13    # remote from an iPad Pro 13"   -> 1376x1032
-vscreen 1280x808     # or just give a resolution directly
+vscreen 1470x919     # or just give a resolution directly
 vscreen off          # back to physical displays only
 ```
 
@@ -53,8 +53,8 @@ Options: `--no-mirror` keeps extended-desktop mode (don't mirror physical screen
 
 | Alias | Device | compensated (default) | native | full (1:1) |
 | --- | --- | --- | --- | --- |
-| `mba13` | MacBook Air 13" | **1280x808** | 1280x832 | 2560x1664 |
-| `mba15` | MacBook Air 15" | **1440x908** | 1440x932 | 2880x1864 |
+| `mba13` | MacBook Air 13" | **1470x919** | 1470x956 | 2560x1664 |
+| `mba15` | MacBook Air 15" | **1710x1069** | 1710x1107 | 2880x1864 |
 | `mbp14` | MacBook Pro 14" | **1512x945** | 1512x982 | 3024x1964 |
 | `mbp16` | MacBook Pro 16" | **1728x1080** | 1728x1117 | 3456x2234 |
 | `imac24` | iMac 24" | **2240x1236** | 2240x1260 | 4480x2520 |
@@ -78,15 +78,20 @@ reserved height:
 | Mode | Math | Result |
 | --- | --- | --- |
 | `1512x945` (MBP 14") | 1512x982 − 37pt notched menu bar | fills fullscreen exactly |
-| `1280x808` (MBA 13") | 1280x832 − 24pt menu bar | fills fullscreen exactly |
+| `1470x919` (MBA 13") | 1470x956 − 37pt notched menu bar | fills fullscreen exactly |
 | `1728x1080` (MBP 16") | 1728x1117 − 37pt notched menu bar | fills fullscreen exactly |
 
 > **iPad note:** iPadOS fullscreen is full-bleed (no persistent menu bar), so
 > iPad entries have `compensated == native` — no subtraction. `-full` gives 1:1
 > panel pixels.
 
-`-native` variants use the panel's true logical resolution — pick those if your
-viewer doesn't reserve the menu-bar area. `-full` uses 1:1 native pixels.
+`-native` variants use the device's factory-default logical resolution — pick those
+if your viewer doesn't reserve the menu-bar area. `-full` uses 1:1 native pixels.
+
+> **MacBook Air (M2+) note:** Airs default to a *scaled* mode, not the 2x logical
+> resolution — MBA 13.6" defaults to `1470x956` (not 1280x832), MBA 15.3" to
+> `1710x1107` (not 1440x932). The Air entries use the factory-default mode so the
+> remote picture stays 1:1 instead of being scaled up ~15%.
 
 ## Client side (RustDesk)
 
