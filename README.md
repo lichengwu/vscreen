@@ -43,7 +43,7 @@ vscreen 1512x945          # set by raw WxH (HiDPI)
 vscreen off               # disconnect virtual screens, restore physical
 vscreen status            # current display state
 vscreen update            # self-update (skips if already latest)
-vscreen version           # print version
+vscreen version | -v | --version   # print version
 vscreen -h | --help       # help
 ```
 

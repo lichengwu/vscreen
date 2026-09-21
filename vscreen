@@ -19,7 +19,7 @@
 #   vscreen status                # 查看当前所有显示器状态
 #   vscreen list                  # 列出支持的设备与三档分辨率
 #   vscreen update                # 从 GitHub 自更新（检测版本，相同则跳过）
-#   vscreen version               # 查看版本号
+#   vscreen version | -v | --version   # 查看版本号
 #   vscreen -h | --help           # 帮助
 #
 # 选项：
@@ -34,7 +34,7 @@ set -euo pipefail
 BD="/Applications/BetterDisplay.app/Contents/MacOS/BetterDisplay"
 REPO="lichengwu/vscreen"
 RAW_URL="https://raw.githubusercontent.com/$REPO/main/vscreen"
-VERSION="1.0.1"
+VERSION="1.0.2"
 
 # 本工具管理的唯一虚拟屏名（= “本工具创建”的身份标识，固定不变）
 SCREEN_NAME="vscreen"
@@ -94,7 +94,7 @@ print_help() {
   vscreen status              查看当前显示器状态
   vscreen list                列出支持的设备与三档分辨率
   vscreen update              检测并自更新（已是最新则跳过）
-  vscreen version             查看版本号
+  vscreen version | -v | --version   查看版本号
   vscreen -h | --help         显示本帮助
 
 选项：
