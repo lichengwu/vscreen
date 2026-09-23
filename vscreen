@@ -11,10 +11,10 @@
 #   3. 设为主显示器；默认把其他物理显示器镜像到它（--no-mirror 可关闭）
 #
 # 用法：
-#   vscreen <设备别名>            # 补偿档（默认，全屏无黑边）
-#   vscreen <设备别名>-native      # 原生逻辑分辨率
-#   vscreen <设备别名>-full        # 1:1 物理档
-#   vscreen <WxH>                 # 直接按分辨率设置（如 1512x945，HiDPI）
+#   vscreen <设备别名>[@系数]      # 补偿档（默认，全屏无黑边），可带缩放系数
+#   vscreen <设备别名>-native[@系数]
+#   vscreen <设备别名>-full[@系数]
+#   vscreen <WxH>[@系数]           # 直接分辨率；W/H 之间可用 x/X/空格（1512 945）
 #   vscreen off                   # 断开所有虚拟屏、解除镜像（恢复纯物理显示）
 #   vscreen status                # 查看当前所有显示器状态
 #   vscreen list                  # 列出支持的设备与三档分辨率
@@ -24,6 +24,8 @@
 #
 # 选项：
 #   --no-mirror                   # 不镜像物理显示器（保持扩展桌面模式）
+#   --print                       # 只预览将设置的分辨率，不修改显示器
+# 系数写法：125% / 1.25 / 80；125% = 内容放大 = 分辨率等比 ÷1.25（空格/小数均宽限）
 #
 # 依赖：BetterDisplay（/Applications/BetterDisplay.app）、python3、zsh
 # 项目：https://github.com/lichengwu/vscreen
@@ -34,7 +36,7 @@ set -euo pipefail
 BD="/Applications/BetterDisplay.app/Contents/MacOS/BetterDisplay"
 REPO="lichengwu/vscreen"
 RAW_URL="https://raw.githubusercontent.com/$REPO/main/vscreen"
-VERSION="1.0.2"
+VERSION="1.1.0"
 
 # 本工具管理的唯一虚拟屏名（= “本工具创建”的身份标识，固定不变）
 SCREEN_NAME="vscreen"
@@ -86,10 +88,10 @@ print_help() {
   echo
   cat <<'EOF'
 用法：
-  vscreen <设备>              匹配设备，用补偿档（全屏无黑边，默认）
-  vscreen <设备>-native       用原生逻辑分辨率
-  vscreen <设备>-full         用 1:1 物理档
-  vscreen <WxH>               直接按分辨率设置（如 1512x945）
+  vscreen <设备>[@系数]        匹配设备，用补偿档（全屏无黑边，默认）
+  vscreen <设备>-native[@系数] 用原生逻辑分辨率
+  vscreen <设备>-full[@系数]   用 1:1 物理档
+  vscreen <WxH>[@系数]         直接按分辨率（W、H 间可用 x / X / 空格）
   vscreen off                 断开所有虚拟屏、解除镜像
   vscreen status              查看当前显示器状态
   vscreen list                列出支持的设备与三档分辨率
@@ -99,6 +101,12 @@ print_help() {
 
 选项：
   --no-mirror                 不镜像物理屏（保持扩展桌面模式）
+  --print                     只预览将设置的分辨率，不修改显示器
+
+缩放系数（@后缀）：
+  125% / 1.25 / 80 等价（无 % 且 >3 视为百分数），范围 25%–400%
+  125% = 内容放大 25%：分辨率等比 ÷1.25，宽高比不变
+  空格宽限：mba13@125% = mba13 @125% = mba13 @ 125%；WxH 带小数自动取整
 
 设备别名：
   mba13      MacBook Air 13"      mba15      MacBook Air 15"
@@ -110,9 +118,9 @@ print_help() {
 
 示例：
   vscreen mbp14                # 从 MacBook Pro 14 远程 → 1512x945
-  vscreen mbp16-native         # MacBook Pro 16 原生逻辑 1728x1117
+  vscreen mba13@125%           # 内容放大 25%：1470x919 → 1176x735
+  vscreen 1512 945             # 空格分隔，等价 1512x945
   vscreen ipadpro13            # 从 iPad Pro 13 远程 → 1376x1032
-  vscreen 1470x919             # 直接给分辨率
 
 项目：https://github.com/lichengwu/vscreen
 EOF
@@ -136,25 +144,95 @@ resolve_device() {
   local -a parts=("${(@s/|/)entry}")
   local name="${parts[1]}" native="${parts[2]}" comp="${parts[3]}" full="${parts[4]}"
   case "$suffix" in
-    native) S_RES="$native" ;;
-    full)   S_RES="$full" ;;
-    *)      S_RES="$comp" ;;
+    native) S_RES="$native"; S_DESC="$key native 档" ;;
+    full)   S_RES="$full";   S_DESC="$key full 档" ;;
+    *)      S_RES="$comp";   S_DESC="$key 补偿档" ;;
   esac
   S_LIST="$comp,$native,$full"
   return 0
 }
 
+# ---------- 缩放 ----------
+# 等比缩放：两维同除 k 后就近取整。宽高比由构造保持（两维同系数），
+# 取整各自最多偏半像素，比例偏差 <0.1%。
+scale_resolution() {  # $1=WxH  $2=k → stdout: 新 WxH
+  local -a wh=("${(@s/x/)1}")
+  awk -v w="${wh[1]}" -v h="${wh[2]}" -v k="$2" \
+    'BEGIN{ printf "%dx%d", int(w/k+0.5), int(h/k+0.5) }'
+}
+
+# 小数 WxH 就近取整（“1336.36x835.45” → “1336x835”）
+round_resolution() {  # $1=WxH（可含小数） → stdout: 整数 WxH
+  local -a wh=("${(@s/x/)1}")
+  awk -v w="${wh[1]}" -v h="${wh[2]}" 'BEGIN{ printf "%dx%d", int(w+0.5), int(h+0.5) }'
+}
+
 # --- 参数解析 ---
 NO_MIRROR=false
+PRINT=false
 ARG=""
-for a in "$@"; do
+SCALE=""      # @系数原始输入（如 125%）
+SCALE_K=""    # 归一化系数（如 1.25）
+S_BASE=""     # 缩放前基准（--print 展示用）
+S_DESC=""     # 档位描述（--print 展示用）
+
+# 预处理（宽限输入）：
+#   “1512 945”     → “1512x945”   （x 在中文输入法/软键盘要切层，空格零成本）
+#   “mba13 @125%”  → “mba13@125%"
+#   “mba13 @ 125%” → “mba13@125%” （@ 与系数间也有空格）
+ARGV=("$@")
+ARGS=()
+lastpos=0    # ARGS 中最后一个位置参数（非旗标）的下标
+i=1
+while (( i <= $#ARGV )); do
+  a="${ARGV[i]}"
+  # 旗标原样透传
+  if [[ "$a" == -* ]]; then
+    ARGS+=("$a"); (( i+=1 )); continue
+  fi
+  # @系数：并入最后一个位置参数（“mba13 @125%” / “mba13 @ 125%”）
+  if [[ "$a" == "@"* && $lastpos -ge 1 ]]; then
+    if [[ "$a" == "@" ]]; then
+      if (( i < $#ARGV )) && [[ "${ARGV[i+1]}" =~ ^[0-9.]+%?$ ]]; then
+        a="@${ARGV[i+1]}"; (( i+=1 ))
+      else
+        ARGS+=("$a"); (( i+=1 )); continue   # @ 后面不是系数 → 后续报“系数为空”
+      fi
+    fi
+    ARGS[$lastpos]="${ARGS[$lastpos]}${a}"
+    (( i+=1 )); continue
+  fi
+  # 相邻数字参数拼成 WxH（允许小数：“1336.36 835.45”）
+  if [[ $lastpos -ge 1 && "${ARGS[$lastpos]}" =~ ^[0-9]+([.][0-9]+)?$ \
+        && "$a" =~ ^[0-9]+([.][0-9]+)?(@[0-9.]+%?)?$ ]]; then
+    ARGS[$lastpos]="${ARGS[$lastpos]}x${a}"
+  else
+    ARGS+=("$a")
+    lastpos=${#ARGS}
+  fi
+  (( i+=1 ))
+done
+
+for a in "${ARGS[@]}"; do
   case "$a" in
     --no-mirror)   NO_MIRROR=true ;;
+    --print)       PRINT=true ;;
     -h|--help)     usage ;;
     -v|--version)  ARG="version" ;;
     *)             ARG="$a" ;;
   esac
 done
+
+# 剥离 @系数 后缀（可出现在设备别名或 WxH 之后）
+if [[ "$ARG" == *"@"* ]]; then
+  SCALE="${ARG##*@}"
+  [[ -n "$SCALE" ]] || die "缩放系数为空（写法：mba13@125%）"
+  ARG="${ARG%@*}"
+  SF_RAW="${SCALE//\%/}"
+  [[ "$SF_RAW" =~ ^[0-9]+([.][0-9]+)?$ ]] || die "无效缩放系数 \"$SCALE\"（写法：125% / 1.25 / 80）"
+  SCALE_K=$(awk -v s="$SF_RAW" 'BEGIN{ if (s+0>3) s=s/100; printf "%.6g", s+0 }')
+  awk -v k="$SCALE_K" 'BEGIN{ exit !(k>=0.25 && k<=4) }' || die "缩放系数 $SCALE 超出范围（25%–400%）"
+fi
 
 MODE="apply"
 S_LIST=""; S_RES=""
@@ -166,16 +244,31 @@ case "$ARG" in
   update)     MODE="update" ;;
   version)    MODE="version" ;;
   *)
-    if [[ "$ARG" =~ ^[0-9]+x[0-9]+$ ]]; then
-      # 直接给分辨率：列表里只放这一档
-      S_RES="$ARG"; S_LIST="$ARG"
+    if [[ "$ARG" =~ ^[0-9]+([.][0-9]+)?[xX][0-9]+([.][0-9]+)?$ ]]; then
+      # 直接给分辨率：列表里只放这一档（X 统一小写，小数就近取整）
+      S_RES=$(round_resolution "${ARG//X/x}"); S_LIST="$S_RES"; S_DESC="自定义分辨率"
     elif resolve_device "$ARG"; then
-      :  # S_LIST / S_RES 已由 resolve_device 设置
+      :  # S_LIST / S_RES / S_DESC 已由 resolve_device 设置
     else
       die "未知参数 \"$ARG\"（应为设备别名、WxH 或 off/status/list/update/version）"
     fi
     ;;
 esac
+
+# 系数 / --print 只对“设置分辨率”路径有意义
+if [[ -n "$SCALE" && "$MODE" != "apply" ]]; then
+  die "缩放系数只能搭配设备或 WxH（如 mba13@125%），不能与 \"$ARG\" 搭配"
+fi
+if [[ "$PRINT" == true && "$MODE" != "apply" ]]; then
+  die "--print 只用于预览设备 / WxH 的分辨率换算"
+fi
+
+# 应用缩放：等比 ÷k、就近取整（宽高比不变）
+if [[ -n "$SCALE_K" ]]; then
+  S_BASE="$S_RES"
+  S_RES=$(scale_resolution "$S_RES" "$SCALE_K")
+  S_LIST="$S_RES"   # 缩放档自成一体（与直接 WxH 同理）
+fi
 
 # ---------- BetterDisplay 前置检查 ----------
 ensure_bd() {
@@ -282,6 +375,15 @@ do_list() {
 }
 
 do_apply() {
+  # --print：只打印换算结果，不触碰 BetterDisplay / 显示器
+  if [[ "$PRINT" == true ]]; then
+    if [[ -n "$SCALE_K" ]]; then
+      echo "${S_DESC} ${S_BASE} @ ${SCALE} → ${S_RES} (HiDPI)"
+    else
+      echo "${S_DESC} → ${S_RES} (HiDPI)"
+    fi
+    return 0
+  fi
   ensure_bd
   local tag cur
 

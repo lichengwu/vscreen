@@ -10,6 +10,7 @@ release of vscreen.
 ```
 vscreen         # main program (single zsh file): device table + BetterDisplay glue
 install.sh      # pipe-safe one-line installer (curl | bash friendly)
+test.sh         # black-box regression tests (CLI paths only, no BetterDisplay needed)
 README.md       # English user docs
 README.zh-CN.md # Chinese user docs
 DEVELOPMENT.md  # this file
@@ -64,6 +65,28 @@ compensated = native_height − menubar
 - Non-notched (iMac / Studio / XDR): menubar = **24pt**
 - iPad: iPadOS fullscreen is full-bleed → menubar = **0**, so `compensated == native`
 
+### Scale factor (`@`)
+
+Any resolution-setting argument accepts an `@<factor>` suffix:
+
+```text
+parse:  pre-join adjacent numeric args        "1512 945"      -> "1512x945"  (x is awkward in CJK IMEs)
+        merge @factor into last positional     "mba13 @ 125%"  -> "mba13@125%"
+        strip @factor from ARG                 mba13@125%      -> mba13 + 125
+        validate / normalize                   125% / 1.25 / 80 -> 1.25  (no % and >3 means percent)
+        dispatch, round decimal WxH, then scale  S_RES = round(W/k) x round(H/k)
+```
+
+- Both dimensions divide by the same k, then round-half-up — the aspect
+  ratio is preserved by construction (each dimension off by ≤ 0.5 px,
+  < 0.1% ratio drift). No candidate-list search is needed: virtual
+  screens accept arbitrary resolutions.
+- Valid range 0.25–4.0 (25%–400%); anything else dies with a usage hint.
+- With a factor, `S_LIST` becomes the single scaled resolution (same as
+  the raw-WxH path) — the single-screen invariant is untouched.
+- `--print` prints the computed resolution and exits before any
+  BetterDisplay call; `test.sh` rides on it.
+
 ## 4. Add a device (example: a 27" 5K monitor)
 
 1. **Find the native pixels** from Apple's spec page or the vendor. Say 5120×2880.
@@ -86,6 +109,7 @@ compensated = native_height − menubar
 
 ```bash
 zsh -n vscreen                # syntax check
+./test.sh                     # black-box regression (no display changes)
 ./vscreen list                # new device present, tiers correct
 ./vscreen <your-alias>        # end-to-end: routes to apply and sets res
 ./vscreen <your-alias>-native
@@ -123,6 +147,12 @@ core of requirement #4; breaking it makes the remote side see multiple screens.
   master mirror source, Y the hardware mirror.
 - Functions captured by `$(...)` (list_displays / find_tag / …) must only
   return via stdout; all logging goes to stderr or it pollutes the return value.
+- Numeric args are pre-joined into WxH (`"1512 945"`, decimals ok) and
+  `@<factor>` tokens merge into the last positional (`"mba13 @ 125%"` →
+  `mba13@125%`) — all before the flag loop, so spaces never split commands.
+- `@<factor>` is stripped after the flag loop, normalized/validated up front,
+  and applied to `S_RES` after dispatch; a factor is only legal on
+  resolution-setting arguments (`off@125%` dies).
 
 ## 8. Versioning & release
 

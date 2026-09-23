@@ -39,7 +39,9 @@ vscreen mbp14             # match MacBook Pro 14" (compensated, fullscreen)
 vscreen mbp14-native      # native logical resolution
 vscreen mbp14-full        # 1:1 native pixels
 vscreen ipadpro13         # match iPad Pro 13" (full-bleed, 4:3)
+vscreen mba13@125%        # scale: content 25% bigger (1470x919 -> 1176x735)
 vscreen 1512x945          # set by raw WxH (HiDPI)
+vscreen 1512 945          # spaces work too — no input-method switch for "x"
 vscreen off               # disconnect virtual screens, restore physical
 vscreen status            # current display state
 vscreen update            # self-update (skips if already latest)
@@ -47,7 +49,8 @@ vscreen version | -v | --version   # print version
 vscreen -h | --help       # help
 ```
 
-Options: `--no-mirror` keeps extended-desktop mode (don't mirror physical screens).
+Options: `--no-mirror` keeps extended-desktop mode (don't mirror physical screens);
+`--print` previews the computed resolution without touching displays.
 
 ## Supported devices
 
@@ -92,6 +95,32 @@ if your viewer doesn't reserve the menu-bar area. `-full` uses 1:1 native pixels
 > resolution — MBA 13.6" defaults to `1470x956` (not 1280x832), MBA 15.3" to
 > `1710x1107` (not 1440x932). The Air entries use the factory-default mode so the
 > remote picture stays 1:1 instead of being scaled up ~15%.
+
+## Scale factor (`@`)
+
+Append `@<factor>` to any device or raw resolution to zoom the remote
+picture while keeping the aspect ratio:
+
+```bash
+vscreen mba13@125%        # compensated / 1.25 -> 1176x735 (content 25% bigger)
+vscreen mba13@80          # / 0.8 -> 1838x1149 (smaller, supersampled = sharper)
+vscreen mbp14-native@1.5  # 1512x982 / 1.5 -> 1008x655
+vscreen 1470 919@125      # raw WxH + factor
+```
+
+- `125%`, `1.25`, and `80` normalize identically (no `%` and value >3
+  means percent); valid range **25%–400%**
+- `125%` uses Windows-style semantics: the logical resolution is divided
+  by 1.25 **proportionally** — the aspect ratio is preserved (rounding
+  error < 0.1%)
+- Input tolerance: `mba13@125%`, `mba13 @125%`, and `mba13 @ 125%` are
+  all equivalent; decimal WxH values are rounded to the nearest integer
+  (`1336.36x835.45` → `1336x835`)
+- >100% is upscaled by the client (slightly softer); <100% is
+  supersampled (sharper)
+- Raw resolutions accept a space between W and H — no input-method
+  switching just to type `x`
+- `--print` shows the computed resolution without changing anything
 
 ## Client side (RustDesk)
 
