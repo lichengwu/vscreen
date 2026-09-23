@@ -1,6 +1,12 @@
 # vscreen — headless Mac virtual display, matched to your client device
 
-**[English](README.md) · [中文](README.zh-CN.md)** · [Development guide](DEVELOPMENT.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/lichengwu/vscreen?sort=semver&display_name=tag)](https://github.com/lichengwu/vscreen/releases)
+[![Platform: macOS](https://img.shields.io/badge/Platform-macOS-black?logo=apple&logoColor=white)](#requirements)
+[![Shell: zsh](https://img.shields.io/badge/Shell-zsh-89e051)](https://www.zsh.org/)
+[![Stars](https://img.shields.io/github/stars/lichengwu/vscreen?style=social)](https://github.com/lichengwu/vscreen/stargazers)
+
+**[English](README.md) · [中文](README.zh-CN.md)** · [Development guide](DEVELOPMENT.md) · [Releases](https://github.com/lichengwu/vscreen/releases)
 
 One line on your headless Mac (Mac mini, etc.) creates a virtual display that
 **exactly matches the Apple device you're remoting from** — so remote desktop
@@ -18,6 +24,17 @@ vscreen off          # back to physical displays only
 its identity marker). Switching devices reuses the same screen and overwrites
 its resolution list — it never creates a second one, so the remote side always
 sees a single display.
+
+## Requirements
+
+- macOS (zsh — the default shell)
+- [BetterDisplay](https://betterdisplay.pro) — the virtual-screen backend
+  (`brew install --cask betterdisplay`)
+- `python3` — ships with the Xcode Command Line Tools
+  (`xcode-select --install`)
+
+No virtual display exists until you run `vscreen`; nothing is installed
+beyond one script in your PATH.
 
 ## Install (one line, no clone)
 
@@ -71,6 +88,10 @@ Synonyms: `air13`→`mba13`, `air15`→`mba15`, `pro14`→`mbp14`, `pro16`→`mb
 `imac`→`imac24`, `prodisplay`/`xdr6k`→`xdr`, `pro13`→`ipadpro13`,
 `pro129`→`ipadpro129`, `ipadair`/`ipad13`→`ipadair13`.
 
+> **Older 13.3" MacBook Air (M1, 2020) note:** different panel — 2560x1600,
+> factory default 1440x900, no notch — not in the table yet. Meanwhile use
+> `vscreen 1440x876` (compensated) or `vscreen 1440x900` (native).
+
 ## Why "compensated" resolutions?
 
 macOS fullscreen reserves the menu-bar / notch area on the **client**'s screen,
@@ -112,7 +133,7 @@ vscreen 1470 919@125      # raw WxH + factor
   means percent); valid range **25%–400%**
 - `125%` uses Windows-style semantics: the logical resolution is divided
   by 1.25 **proportionally** — the aspect ratio is preserved (rounding
-  error < 0.1%)
+  error < 0.1% at realistic resolutions)
 - Input tolerance: `mba13@125%`, `mba13 @125%`, and `mba13 @ 125%` are
   all equivalent; decimal WxH values are rounded to the nearest integer
   (`1336.36x835.45` → `1336x835`)
@@ -138,6 +159,14 @@ vscreen 1470 919@125      # raw WxH + factor
   read back and restored.
 
 See the [development guide](DEVELOPMENT.md) to add your own device resolutions.
+
+## Contributing
+
+- Bugs & feature requests: [open an issue](https://github.com/lichengwu/vscreen/issues)
+- Add a device or a tier: follow the [development guide](DEVELOPMENT.md) —
+  it's a one-line table entry
+- Run `./test.sh` before submitting (50 black-box assertions, no display
+  changes, no BetterDisplay needed)
 
 ## License
 

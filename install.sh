@@ -48,10 +48,11 @@ if [[ -z "$DEST" ]]; then
 fi
 echo "==> 安装 $SCRIPT_NAME 到 $DEST/"
 
-# 4. 脚本源：本地仓库优先（克隆场景），否则从 GitHub 下载（pipe / 一键场景）
+# 4. 脚本源：以脚本路径运行（克隆场景 ./install.sh）时用本地仓库；
+#    pipe 场景（curl | bash，$0 是 "bash"）恒从 GitHub 下载，不受当前目录影响
 SRC=""
 SRC_LOCAL="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/$SCRIPT_NAME"
-if [[ -f "$SRC_LOCAL" ]]; then
+if [[ "$0" == */install.sh && -f "$SRC_LOCAL" ]]; then
   SRC="$SRC_LOCAL"
 else
   echo "==> 从 GitHub 下载 ..."

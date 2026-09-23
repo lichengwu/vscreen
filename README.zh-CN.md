@@ -1,6 +1,12 @@
 # vscreen — 无头 Mac 虚拟屏，匹配远程客户端设备
 
-**[English](README.md) · [中文](README.zh-CN.md)** · [开发指南](DEVELOPMENT.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/lichengwu/vscreen?sort=semver&display_name=tag)](https://github.com/lichengwu/vscreen/releases)
+[![Platform: macOS](https://img.shields.io/badge/Platform-macOS-black?logo=apple&logoColor=white)](#环境要求)
+[![Shell: zsh](https://img.shields.io/badge/Shell-zsh-89e051)](https://www.zsh.org/)
+[![Stars](https://img.shields.io/github/stars/lichengwu/vscreen?style=social)](https://github.com/lichengwu/vscreen/stargazers)
+
+**[English](README.md) · [中文](README.zh-CN.md)** · [开发指南](DEVELOPMENT.md) · [Releases](https://github.com/lichengwu/vscreen/releases)
 
 在无头 Mac（Mac mini 等）上一条命令创建与你手头苹果设备**逻辑分辨率完全匹配**的虚拟显示器，
 让 RustDesk 等远程桌面获得像素级 1:1、全屏无黑边的清晰画面。
@@ -14,6 +20,14 @@ vscreen off          # 恢复纯物理显示
 
 `vscreen` 只维护**一块**名为 `vscreen` 的虚拟屏（这个名字就是"本工具创建"的标识）。
 切换设备时复用同一块屏、覆盖分辨率列表，绝不新建第二块，远程端永远只见一块屏。
+
+## 环境要求
+
+- macOS（zsh —— 系统默认 shell）
+- [BetterDisplay](https://betterdisplay.pro)：虚拟屏后端（`brew install --cask betterdisplay`）
+- `python3`：随 Xcode 命令行工具提供（`xcode-select --install`）
+
+运行 `vscreen` 之前不会创建任何虚拟屏；除 PATH 里一个脚本外不装任何东西。
 
 ## 一键安装（免 clone）
 
@@ -65,6 +79,10 @@ vscreen -h | --help       # 帮助
 `imac`→`imac24`、`prodisplay`/`xdr6k`→`xdr`、`pro13`→`ipadpro13`、
 `pro129`→`ipadpro129`、`ipadair`/`ipad13`→`ipadair13`。
 
+> **老款 13.3" MacBook Air（M1，2020）说明：** 面板不同——2560x1600、出厂默认
+> 1440x900、无刘海——暂未入表。可先用 `vscreen 1440x876`（补偿档）或
+> `vscreen 1440x900`（原生档）。
+
 ## 为什么需要"补偿档"？
 
 macOS 全屏会在**客户端**屏幕预留菜单栏/刘海区，等比缩放的远程画面会留黑边；
@@ -97,7 +115,7 @@ vscreen 1470 919@125      # 直接 WxH + 系数
 ```
 
 - 系数写法 `125%` / `1.25` / `80` 等价（无 `%` 且数值 >3 时按百分数），范围 **25%–400%**
-- `125%` 是 Windows 式“内容放大”：逻辑分辨率**等比 ÷1.25**，宽高比不变（取整误差 <0.1%）
+- `125%` 是 Windows 式“内容放大”：逻辑分辨率**等比 ÷1.25**，宽高比不变（常规分辨率下取整误差 <0.1%）
 - 输入宽限：`mba13@125%`、`mba13 @125%`、`mba13 @ 125%` 等价；WxH 带小数自动就近取整（`1336.36x835.45` → `1336x835`）
 - >100% 客户端上采样（画面略软），<100% 超采样（更锐）
 - 直接分辨率时 `W H` 空格分隔等价 `WxH`——不用切输入法打 `x`
@@ -116,6 +134,12 @@ vscreen 1470 919@125      # 直接 WxH + 系数
 - 更新虚拟屏分辨率列表会重置活动档 —— 读回并恢复。
 
 要适配自己的设备分辨率，看 [开发指南](DEVELOPMENT.md)。
+
+## 参与贡献
+
+- 问题反馈 / 功能建议：[提个 issue](https://github.com/lichengwu/vscreen/issues)
+- 增加设备/档位：按 [开发指南](DEVELOPMENT.md) 操作——就是加一行表项
+- 提交前请跑 `./test.sh`（50 项黑盒断言，不改显示器、不依赖 BetterDisplay）
 
 ## 许可
 
