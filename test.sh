@@ -51,6 +51,9 @@ expect "WxH 空格 + 空格 @"           1890x1181 1512 945 @ 80
 expect "小数 WxH（x 分隔）"          1336x835  1336.36x835.45
 expect "小数 WxH（空格分隔）"        1336x835  1336.36 835.45
 expect "小数 WxH + 系数"            1069x668  1336.36x835.45@125
+expect "边界 @25%（÷0.25）"          5880x3676 mba13@25%
+expect "边界 @400%（÷4）"            368x230   mba13@400%
+expect "x 形 + % + 系数"            1210x756  1512x945@125%
 
 echo "错误路径（应拒绝）："
 refuse "系数越界 @500%"            mba13@500%
@@ -62,18 +65,41 @@ refuse "@ 后非系数（mba13 @ abc）" mba13 @ abc
 refuse "系数配 off"                off@125
 refuse "系数配 status"             status@125
 refuse "--print 配 list"           list --print
+refuse "系数在前（@125% mba13）"   @125% mba13
+refuse "两个位置参数（mba13 mbp14）" mba13 mbp14
 
 echo "自更新保护（file:// 假远端，不碰网络）："
-cp -p vscreen /tmp/vscreen_upd_test
-sed 's/^VERSION=".*"/VERSION="1.0.0"/' vscreen > /tmp/vscreen_remote_old
-sed 's/^VERSION=".*"/VERSION="9.9.9"/' vscreen > /tmp/vscreen_remote_new
-VSCREEN_RAW_URL="file:///tmp/vscreen_remote_old" /tmp/vscreen_upd_test update >/dev/null 2>&1
-if diff -q vscreen /tmp/vscreen_upd_test >/dev/null; then ok "旧远端不降级（保持本地版本）"; else bad "旧远端不降级" "本地被旧版覆盖"; fi
-VSCREEN_RAW_URL="file:///tmp/vscreen_remote_new" /tmp/vscreen_upd_test update >/dev/null 2>&1
+cur_ver=$(sed -n 's/^VERSION="\([^"]*\)".*/\1/p' vscreen | head -1)
+sed 's/^VERSION="[^"]*"/VERSION="1.0.0"/'  vscreen > /tmp/vscreen_remote_old
+sed 's/^VERSION="[^"]*"/VERSION="9.9.9"/'  vscreen > /tmp/vscreen_remote_new
+sed "s/^VERSION=\"[^\"]*\"/VERSION=\"$cur_ver\"/" vscreen > /tmp/vscreen_remote_eq
+sed 's/^VERSION="[^"]*"/VERSION="1.1.10"/' vscreen > /tmp/vscreen_remote_num
+sed 's/^VERSION="[^"]*"/VERSION="garbage"/' vscreen > /tmp/vscreen_remote_gbg
+grep -v '^VERSION=' vscreen > /tmp/vscreen_remote_nover
+
+run_upd() {  # $1=假远端路径；UPD_OUT 记录输出，副本每次重置
+  cp -p vscreen /tmp/vscreen_upd_test
+  UPD_OUT=$(VSCREEN_RAW_URL="file://$1" /tmp/vscreen_upd_test update 2>&1)
+}
+skip_case() {  # skip_case <描述> <远端文件> <期望消息片段> —— 应跳过且副本不变
+  run_upd "$2"
+  if diff -q vscreen /tmp/vscreen_upd_test >/dev/null && [[ "$UPD_OUT" == *"$3"* ]]; then
+    ok "$1"
+  else
+    bad "$1" "副本被改动或消息不符（$UPD_OUT）"
+  fi
+}
+skip_case "旧远端不降级"          /tmp/vscreen_remote_old   "未覆盖"
+skip_case "等版本跳过"            /tmp/vscreen_remote_eq    "已是最新"
+skip_case "垃圾远端版本不覆盖"    /tmp/vscreen_remote_gbg   "无法比较"
+skip_case "远端无版本行不覆盖"    /tmp/vscreen_remote_nover "无法解析"
+run_upd /tmp/vscreen_remote_num
+if grep -q 'VERSION="1.1.10"' /tmp/vscreen_upd_test; then ok "数值段比较 1.1.10 > 1.1.1 升级"; else bad "数值段比较升级" "未升级到 1.1.10"; fi
+run_upd /tmp/vscreen_remote_new
 if grep -q 'VERSION="9.9.9"' /tmp/vscreen_upd_test; then ok "新远端正常升级"; else bad "新远端正常升级" "未升级到 9.9.9"; fi
 
 echo "版本与帮助："
-./vscreen version    | grep -q "v1.1.1"            && ok "version 命令"        || bad "version 命令" "版本号不符"
+./vscreen version    | grep -q "v$cur_ver"         && ok "version 命令（动态断言）" || bad "version 命令" "版本号不符"
 ./vscreen --version  | grep -q "^vscreen v"        && ok "--version 旗标"      || bad "--version 旗标" "无输出"
 ./vscreen --help     | grep -q -- "-v | --version" && ok "帮助含 -v|--version" || bad "帮助" "缺 -v | --version"
 ./vscreen --help     | grep -q "@系数"             && ok "帮助含 @系数说明"    || bad "帮助" "缺 @系数"

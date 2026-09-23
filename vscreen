@@ -39,7 +39,7 @@ REPO="lichengwu/vscreen"
 RAW_URL="${VSCREEN_RAW_URL:-https://raw.githubusercontent.com/$REPO/main/vscreen}"
 # zsh 函数内 $0 = 函数名，须在顶层捕获真实脚本路径（update 的 mv 目标）
 SCRIPT_PATH="$0"
-VERSION="1.1.1"
+VERSION="1.1.2"
 
 # 本工具管理的唯一虚拟屏名（= “本工具创建”的身份标识，固定不变）
 SCREEN_NAME="vscreen"
@@ -216,13 +216,18 @@ while (( i <= $#ARGV )); do
   (( i+=1 ))
 done
 
+POS_COUNT=0
 for a in "${ARGS[@]}"; do
   case "$a" in
     --no-mirror)   NO_MIRROR=true ;;
     --print)       PRINT=true ;;
     -h|--help)     usage ;;
     -v|--version)  ARG="version" ;;
-    *)             ARG="$a" ;;
+    *)
+      # 一次只接受一个位置参数：静默“后者覆盖前者”会吞掉系数（如 @125% mba13）
+      POS_COUNT=$((POS_COUNT+1))
+      (( POS_COUNT > 1 )) && die "一次只能指定一个设备/WxH（多余参数 \"$a\"）；系数请写成 mba13@125%"
+      ARG="$a" ;;
   esac
 done
 
@@ -417,7 +422,8 @@ do_apply() {
   others=$(virtual_tags_except "$SCREEN_NAME")
   if [[ -n "$others" ]]; then
     echo "断开其他虚拟屏 ..."
-    for t in $others; do
+    # zsh 不对未加引号的 $var 分词——多行 tag 列表必须用 ${(f)…} 按行切
+    for t in ${(f)others}; do
       "$BD" set -tagID="$t" -connected=off >/dev/null 2>&1 || true
     done
     sleep 2
@@ -431,10 +437,10 @@ do_apply() {
     sleep 2
   fi
 
-  # 4. 清掉所有现有镜像，避免残留镜像组干扰
+  # 4. 清掉所有现有镜像，避免残留镜像组干扰（${(f)…}：zsh 不分词，见上）
   local alltags
   alltags=$(list_displays | cut -f1)
-  for t in $alltags; do unmirror "$t"; done
+  for t in ${(f)alltags}; do unmirror "$t"; done
   sleep 2
 
   # 5. 设为主显示器
@@ -446,7 +452,7 @@ do_apply() {
   if [[ "$NO_MIRROR" == "false" ]]; then
     local phys
     phys=$(physical_tags)
-    for p in $phys; do
+    for p in ${(f)phys}; do
       echo "镜像物理屏 tagID=$p -> $SCREEN_NAME"
       "$BD" set -tagID="$tag" -mirror=on -targetTagID="$p" >/dev/null 2>&1 || true
       sleep 1
@@ -464,10 +470,10 @@ do_off() {
   echo "恢复纯物理显示（断开虚拟屏、解除镜像）..."
   local alltags vtags phys
   alltags=$(list_displays | cut -f1)
-  for t in $alltags; do unmirror "$t"; done
+  for t in ${(f)alltags}; do unmirror "$t"; done
   sleep 2
   vtags=$(list_displays | awk -F'\t' '$2=="VirtualScreen" {print $1}')
-  for t in $vtags; do
+  for t in ${(f)vtags}; do
     "$BD" set -tagID="$t" -connected=off >/dev/null 2>&1 || true
   done
   phys=$(physical_tags | head -1)
@@ -479,15 +485,24 @@ do_off() {
   show_status
 }
 
-# 版本比较：$1 是否严格新于 $2（x.y.z 三段，格式非法返回 1）
+# 版本比较：$1 是否严格新于 $2
+# 返回 0=更新 / 1=不新（更旧或相同）/ 2=无法比较（段数超界或非纯数字段）
+# 接受 1–4 段数字并补齐（"2.0" ≡ "2.0.0.0"）；段值经 10# 归一防前导零按八进制解析
 ver_newer() {
-  local -a a b
-  a=("${(@s/./)1}") b=("${(@s/./)2}")
-  [[ ${#a[@]} -eq 3 && ${#b[@]} -eq 3 ]] || return 1
+  local -a a b A B
   local i
-  for i in 1 2 3; do
-    if (( a[i] > b[i] )); then return 0
-    elif (( a[i] < b[i] )); then return 1; fi
+  a=("${(@s/./)1}") b=("${(@s/./)2}")
+  (( ${#a[@]} >= 1 && ${#a[@]} <= 4 )) || return 2
+  (( ${#b[@]} >= 1 && ${#b[@]} <= 4 )) || return 2
+  for i in "${a[@]}"; do [[ "$i" == <-> ]] || return 2; done
+  for i in "${b[@]}"; do [[ "$i" == <-> ]] || return 2; done
+  for i in "${a[@]}"; do A+=( $(( 10#$i )) ); done
+  for i in "${b[@]}"; do B+=( $(( 10#$i )) ); done
+  while (( ${#A[@]} < 4 )); do A+=(0); done
+  while (( ${#B[@]} < 4 )); do B+=(0); done
+  for i in 1 2 3 4; do
+    if (( A[i] > B[i] )); then return 0
+    elif (( A[i] < B[i] )); then return 1; fi
   done
   return 1
 }
@@ -509,14 +524,22 @@ do_update() {
     rm -f "$tmp"
     return
   fi
-  # 只升不降：远端更旧（CDN 缓存滞后 / 本地为开发版）时拒绝覆盖
-  if ! ver_newer "$remote_ver" "$VERSION"; then
+  # 只升不降：远端不比本地新（更旧 / 无法比较）时拒绝覆盖
+  local rc=0
+  ver_newer "$remote_ver" "$VERSION" || rc=$?
+  if (( rc == 2 )); then
+    echo "跳过：远端版本 \"$remote_ver\" 无法比较（本地 v$VERSION），未覆盖"
+    rm -f "$tmp"
+    return
+  fi
+  if (( rc == 1 )); then
     echo "跳过：本地 v$VERSION 不旧于远端 v$remote_ver（远端可能是缓存旧版，未覆盖）"
     rm -f "$tmp"
     return
   fi
   chmod +x "$tmp"
-  mv "$tmp" "$SCRIPT_PATH"
+  mv "$tmp" "$SCRIPT_PATH" \
+    || { rm -f "$tmp"; echo "错误：无法写入 $SCRIPT_PATH（权限？）" >&2; exit 1; }
   echo "已更新 v$VERSION -> v$remote_ver ✅（重新运行即生效）"
 }
 

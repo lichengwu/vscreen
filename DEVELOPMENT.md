@@ -160,6 +160,14 @@ core of requirement #4; breaking it makes the remote side see multiple screens.
 - zsh flag-argument gotcha: `(s/./)` splits on `.` while `(s./.)` splits on
   `/` — the enclosure character is a delimiter, not the separator.
   `ver_newer` initially split on the wrong char and rejected every update.
+- **zsh does NOT word-split unquoted `$var`** (unlike bash/sh): `for t in $tags`
+  iterated once over a newline blob, silently breaking the disconnect /
+  unmirror / mirror loops on any multi-display host (a single display masked
+  it). All tag loops use `${(f)var}` (split on newlines); `$(cmd)` in word
+  position does split, which is why `get_current_res` was always fine.
+- Only **one positional argument** is accepted — a second one dies with a
+  hint. Previously "last positional wins" silently dropped a leading
+  `@factor` (`vscreen @125% mba13` applied 1470x919 with exit 0).
 
 ## 8. Versioning & release
 
@@ -175,11 +183,15 @@ A single `VERSION="x.y.z"` constant lives near the top of `vscreen`.
 extracts its `VERSION=` line, and compares:
 
 - **Same version** → discard, print `已是最新版本 vX.Y.Z`, do nothing.
-- **Strictly newer** (x.y.z compare via `ver_newer`) → replace `SCRIPT_PATH`,
-  print `已更新 vOld -> vNew`.
-- **Older or unparseable** → skip (fail-safe, never clobber — protects
-  against CDN cache lag and newer local dev copies).
-- **Download failure** → fast, clean error.
+- **Strictly newer** (`ver_newer`: 1–4 numeric segments, zero-padded —
+  `"2.0"` ≡ `"2.0.0.0"`) → replace `SCRIPT_PATH`, print `已更新 vOld -> vNew`.
+- **Older / equal / uncomparable** (non-numeric segments like `1.2.0-beta`)
+  → skip with its own message (fail-safe, never clobber).
+- **Download failure** → fast, clean error; mv failure → clean error and
+  temp cleanup.
+- If `vscreen` is invoked through a symlink, update replaces the *symlink*,
+  not its target (install.sh never symlinks; relevant only for manual
+  setups).
 
 `VSCREEN_RAW_URL` overrides the raw URL — the test seam `test.sh` uses to
 point update at `file://` fake remotes and exercise upgrade/downgrade
