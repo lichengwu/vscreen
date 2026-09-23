@@ -63,8 +63,17 @@ refuse "系数配 off"                off@125
 refuse "系数配 status"             status@125
 refuse "--print 配 list"           list --print
 
+echo "自更新保护（file:// 假远端，不碰网络）："
+cp -p vscreen /tmp/vscreen_upd_test
+sed 's/^VERSION=".*"/VERSION="1.0.0"/' vscreen > /tmp/vscreen_remote_old
+sed 's/^VERSION=".*"/VERSION="9.9.9"/' vscreen > /tmp/vscreen_remote_new
+VSCREEN_RAW_URL="file:///tmp/vscreen_remote_old" /tmp/vscreen_upd_test update >/dev/null 2>&1
+if diff -q vscreen /tmp/vscreen_upd_test >/dev/null; then ok "旧远端不降级（保持本地版本）"; else bad "旧远端不降级" "本地被旧版覆盖"; fi
+VSCREEN_RAW_URL="file:///tmp/vscreen_remote_new" /tmp/vscreen_upd_test update >/dev/null 2>&1
+if grep -q 'VERSION="9.9.9"' /tmp/vscreen_upd_test; then ok "新远端正常升级"; else bad "新远端正常升级" "未升级到 9.9.9"; fi
+
 echo "版本与帮助："
-./vscreen version    | grep -q "v1.1.0"            && ok "version 命令"        || bad "version 命令" "版本号不符"
+./vscreen version    | grep -q "v1.1.1"            && ok "version 命令"        || bad "version 命令" "版本号不符"
 ./vscreen --version  | grep -q "^vscreen v"        && ok "--version 旗标"      || bad "--version 旗标" "无输出"
 ./vscreen --help     | grep -q -- "-v | --version" && ok "帮助含 -v|--version" || bad "帮助" "缺 -v | --version"
 ./vscreen --help     | grep -q "@系数"             && ok "帮助含 @系数说明"    || bad "帮助" "缺 @系数"

@@ -35,8 +35,11 @@ set -euo pipefail
 
 BD="/Applications/BetterDisplay.app/Contents/MacOS/BetterDisplay"
 REPO="lichengwu/vscreen"
-RAW_URL="https://raw.githubusercontent.com/$REPO/main/vscreen"
-VERSION="1.1.0"
+# VSCREEN_RAW_URL 可注入 file:// 假远端（测试用）；默认走 GitHub raw
+RAW_URL="${VSCREEN_RAW_URL:-https://raw.githubusercontent.com/$REPO/main/vscreen}"
+# zsh 函数内 $0 = 函数名，须在顶层捕获真实脚本路径（update 的 mv 目标）
+SCRIPT_PATH="$0"
+VERSION="1.1.1"
 
 # 本工具管理的唯一虚拟屏名（= “本工具创建”的身份标识，固定不变）
 SCREEN_NAME="vscreen"
@@ -476,11 +479,25 @@ do_off() {
   show_status
 }
 
+# 版本比较：$1 是否严格新于 $2（x.y.z 三段，格式非法返回 1）
+ver_newer() {
+  local -a a b
+  a=("${(@s/./)1}") b=("${(@s/./)2}")
+  [[ ${#a[@]} -eq 3 && ${#b[@]} -eq 3 ]] || return 1
+  local i
+  for i in 1 2 3; do
+    if (( a[i] > b[i] )); then return 0
+    elif (( a[i] < b[i] )); then return 1; fi
+  done
+  return 1
+}
+
 do_update() {
   local tmp remote_ver
   tmp=$(mktemp)
   echo "检查更新 ..."
-  curl -fsSL "$RAW_URL" -o "$tmp" || { echo "错误：下载失败（$RAW_URL）" >&2; rm -f "$tmp"; exit 1; }
+  curl -fsSL --connect-timeout 10 --max-time 30 "$RAW_URL" -o "$tmp" \
+    || { echo "错误：下载失败（$RAW_URL）——请检查网络后重试" >&2; rm -f "$tmp"; exit 1; }
   remote_ver=$(sed -n 's/^VERSION="\([^"]*\)".*/\1/p' "$tmp" | head -1)
   if [[ -z "$remote_ver" ]]; then
     echo "⚠️  无法解析远端版本号，跳过更新" >&2
@@ -492,8 +509,14 @@ do_update() {
     rm -f "$tmp"
     return
   fi
+  # 只升不降：远端更旧（CDN 缓存滞后 / 本地为开发版）时拒绝覆盖
+  if ! ver_newer "$remote_ver" "$VERSION"; then
+    echo "跳过：本地 v$VERSION 不旧于远端 v$remote_ver（远端可能是缓存旧版，未覆盖）"
+    rm -f "$tmp"
+    return
+  fi
   chmod +x "$tmp"
-  mv "$tmp" "$0"
+  mv "$tmp" "$SCRIPT_PATH"
   echo "已更新 v$VERSION -> v$remote_ver ✅（重新运行即生效）"
 }
 

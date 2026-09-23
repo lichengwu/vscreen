@@ -153,6 +153,13 @@ core of requirement #4; breaking it makes the remote side see multiple screens.
 - `@<factor>` is stripped after the flag loop, normalized/validated up front,
   and applied to `S_RES` after dispatch; a factor is only legal on
   resolution-setting arguments (`off@125%` dies).
+- **zsh quirk: inside a function `$0` is the *function name*, not the script
+  path** — `mv "$tmp" "$0"` in `do_update` wrote a stray `do_update` file
+  instead of updating the script (self-update never worked before v1.1.1).
+  `SCRIPT_PATH="$0"` is captured at top level and used as the mv target.
+- zsh flag-argument gotcha: `(s/./)` splits on `.` while `(s./.)` splits on
+  `/` — the enclosure character is a delimiter, not the separator.
+  `ver_newer` initially split on the wrong char and rejected every update.
 
 ## 8. Versioning & release
 
@@ -163,13 +170,20 @@ A single `VERSION="x.y.z"` constant lives near the top of `vscreen`.
 
 ### Self-update with version check
 
-`vscreen update` downloads the latest `vscreen` from GitHub raw, extracts its
-`VERSION=` line, and compares to the running copy:
+`vscreen update` downloads the latest `vscreen` from GitHub raw (10s connect
+/ 30s total timeout — a stalled TLS handshake used to hang update forever),
+extracts its `VERSION=` line, and compares:
 
-- **Same version** → discard the download, print `已是最新版本 vX.Y.Z`, do nothing.
-- **Newer version** → install over `$0`, print `已更新 vOld -> vNew`.
-- **Cannot parse remote version** → skip (fail-safe, never clobber with an
-  unknown payload).
+- **Same version** → discard, print `已是最新版本 vX.Y.Z`, do nothing.
+- **Strictly newer** (x.y.z compare via `ver_newer`) → replace `SCRIPT_PATH`,
+  print `已更新 vOld -> vNew`.
+- **Older or unparseable** → skip (fail-safe, never clobber — protects
+  against CDN cache lag and newer local dev copies).
+- **Download failure** → fast, clean error.
+
+`VSCREEN_RAW_URL` overrides the raw URL — the test seam `test.sh` uses to
+point update at `file://` fake remotes and exercise upgrade/downgrade
+behavior without touching the network.
 
 So bumping `VERSION` and pushing to `main` is what makes `vscreen update`
 actually upgrade users. No bump, no churn.

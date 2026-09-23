@@ -56,7 +56,7 @@ if [[ -f "$SRC_LOCAL" ]]; then
 else
   echo "==> 从 GitHub 下载 ..."
   SRC=$(mktemp)
-  curl -fsSL "$RAW_URL" -o "$SRC"
+  curl -fsSL --connect-timeout 10 --max-time 30 "$RAW_URL" -o "$SRC"
 fi
 install -m 0755 "$SRC" "$DEST/$SCRIPT_NAME"
 
