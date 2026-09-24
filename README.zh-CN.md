@@ -143,9 +143,10 @@ vscreen 1470 919@125      # 直接 WxH + 系数
 [docs/linux-port-design.md](docs/linux-port-design.md)。
 
 ```bash
-sudo vscreen mba13          # 把显示器重塑为客户端匹配分辨率
+vscreen provision           # 一次性授权：root 安装 + 免密规则（只输一次密码）
+vscreen mba13               # 之后直接跑——免 sudo、免密码
 vscreen mba13@125% --print  # 预览换算（免 root）
-sudo vscreen off            # 恢复显示器原始 EDID
+vscreen off                 # 恢复显示器原始 EDID
 ```
 
 ## 参与贡献

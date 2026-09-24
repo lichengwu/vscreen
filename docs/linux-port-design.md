@@ -75,7 +75,11 @@ install.sh         # 平台探测：macOS 装 vscreen，Linux 装 vscreen-linux�
 - **CLI 表面与 macOS 完全一致**：设备别名[@系数] / -native / -full / WxH（x/X/空格）/ 
   空格 @ / 小数 / off / status / list / version / update / --print / -h。
 - **设备表**：阶段 1 各自内嵌（macOS 版不动），`test-linux.sh` 做**双向同步断言**防漂移。
-- **root 语义**：切换/off 需要 root（`sudo vscreen ...`）；`--print` / `list` / `version` /
+- **root 语义**：切换/off/update 需要 root；非 root 时脚本自动 `sudo` 重执行。
+  `vscreen provision`（一次性）：root 安装到 /usr/local/bin（root 属主）+ 经 visudo
+  校验的限定路径免密规则 + 清理 PATH 遮蔽副本 → 之后 `vscreen mba13` 免 sudo
+  免密直跑。免密规则由 provision 生成、只指向 root 属主路径（用户可写文件
+  配 NOPASSWD 等于送 root，构造上即不存在）。`--print` / `list` / `version` /
   `status`（只读）免 root。EDID 生成内嵌 python3（两平台共有依赖）。
 - X11 会话（≤24.04）下同一 EDID 机制亦可用（内核层与 compositor 无关）；纯 xrandr
   后端列为阶段 2。

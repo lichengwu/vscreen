@@ -77,6 +77,7 @@ vscreen v$VERSION (linux) — 匹配远程客户端设备的桌面分辨率
   vscreen off                  恢复显示器原始 EDID
   vscreen status               当前 connector / EDID 覆盖状态
   vscreen list                 列出支持的设备与三档分辨率
+  vscreen provision            一次性授权：之后 vscreen mba13 免 sudo 直跑
   vscreen version | -v | --version   查看版本号
   vscreen -h | --help          显示本帮助
 
@@ -90,7 +91,8 @@ vscreen v$VERSION (linux) — 匹配远程客户端设备的桌面分辨率
   125% = 内容放大 25%：分辨率等比 ÷1.25，宽高比不变
   空格宽限：mba13@125% = mba13 @125% = mba13 @ 125%；WxH 带小数自动取整
 
-注意：切换与 off 需要 root（sudo vscreen ...）；provision 见文档。
+注意：切换/off 需要 root。首次运行「vscreen provision」（自动 sudo 一次，
+      安装 root 属主副本 + 限定路径的免密规则），之后直接「vscreen mba13」。
 
 项目：https://github.com/lichengwu/vscreen
 EOF
@@ -101,6 +103,9 @@ die() { echo; echo "错误：$1" >&2; echo >&2; print_help >&2; exit 1; }
 if [ "${1:-}" = "__deventry" ] && [ -n "${2:-}" ]; then
   dev_entry "$2" && exit 0 || exit 1
 fi
+
+# 原始参数（供自动提权重执行用）
+ORIG_ARGS=("$@")
 
 # ---------- 数值工具 ----------
 scale_resolution() {  # $1=WxH $2=k → stdout: 新 WxH（两维同除 k 后就近取整）
@@ -271,11 +276,12 @@ fi
 # --- 解析设备/WxH ---
 MODE="apply"
 case "$ARG" in
-  "") die "缺少参数（<设备|WxH|off|status|list|version>）" ;;
+  "") die "缺少参数（<设备|WxH|off|status|list|provision|version>）" ;;
   off|none)   MODE="off" ;;
   status)     MODE="status" ;;
   list)       MODE="list" ;;
   version)    MODE="version" ;;
+  provision)  MODE="provision" ;;
   update)     MODE="update" ;;
   *)
     key=$ARG
@@ -329,8 +335,12 @@ do_list() {
   echo "      vscreen mba13@125%    # 1470x919 ÷1.25 → 1176x735"
 }
 
-need_root() {
-  [ "$(id -u)" = 0 ] || die "此操作需要 root（sudo vscreen ...）"
+ensure_root() {  # 非 root 时自动 sudo 重执行（provision 后免密；否则输一次密码）
+  [ "$(id -u)" = 0 ] && return 0
+  if command -v sudo >/dev/null 2>&1; then
+    exec sudo -- "$0" ${ORIG_ARGS[@]+"${ORIG_ARGS[@]}"}
+  fi
+  die "此操作需要 root（sudo vscreen ...）"
 }
 
 show_status() {
@@ -350,7 +360,7 @@ show_status() {
 }
 
 do_off() {
-  need_root
+  ensure_root
   local c
   c=$(find_connector) || die "找不到可用 connector"
   echo "恢复显示器原始 EDID ..."
@@ -381,7 +391,7 @@ do_apply() {
     return 0
   fi
 
-  need_root
+  ensure_root
   local c phys file
   c=$(find_connector) || die "找不到可用的显示器 connector（connected 且有 EDID）"
 
@@ -417,6 +427,49 @@ do_apply() {
   show_status
 }
 
+do_provision() {  # 一次性授权：root 安装 + 限定路径免密规则；之后免 sudo 直跑
+  ensure_root
+  local user dst uhome ucopy tmp
+  user=${SUDO_USER:-}
+  [ -n "$user" ] || die "请用普通用户运行：vscreen provision（sudo 会记录授权用户）"
+  dst=/usr/local/bin/vscreen
+
+  if [ ! -f "$dst" ] || ! cmp -s "$0" "$dst"; then
+    install -m 0755 -o root -g root "$0" "$dst" \
+      || die "无法安装到 $dst"
+    echo "✓ 已安装 root 属主的 $dst"
+  fi
+
+  # 用户可写副本会遮蔽 PATH（Ubuntu 默认 ~/.local/bin 靠前）→ 移开/提醒
+  uhome=$(getent passwd "$user" 2>/dev/null | cut -d: -f6) || uhome=""
+  ucopy="$uhome/.local/bin/vscreen"
+  if [ -f "$ucopy" ]; then
+    if cmp -s "$ucopy" "$dst"; then
+      rm -f "$ucopy"
+      echo "✓ 已移除重复的用户副本 $ucopy（避免 PATH 遮蔽）"
+    else
+      echo "⚠️  $ucopy 内容不同且可能遮蔽 PATH，建议手动删除" >&2
+    fi
+  fi
+
+  # 免密规则只授权 root 属主的系统路径——绝不可指向用户可写文件
+  tmp=$(mktemp)
+  printf '%s ALL=(root) NOPASSWD: %s\n' "$user" "$dst" > "$tmp"
+  if ! visudo -cf "$tmp" >/dev/null 2>&1; then
+    rm -f "$tmp"
+    die "sudoers 规则校验失败（visudo），未写入"
+  fi
+  install -m 0440 -o root -g root "$tmp" /etc/sudoers.d/vscreen \
+    || { rm -f "$tmp"; die "无法写入 /etc/sudoers.d/vscreen"; }
+  rm -f "$tmp"
+  echo "✓ 已写入 /etc/sudoers.d/vscreen：$user 免密运行 $dst"
+  echo
+  echo "完成 ✅ 现在可以直接（免 sudo、免密码）："
+  echo "  vscreen mba13"
+  echo "  vscreen off"
+  echo "  vscreen mba13@125% --print   # 预览本来就免 root"
+}
+
 # --- 自更新（拉 vscreen-linux；版本比较只升不降）---
 ver_newer() {  # $1 候选 $2 当前 → 0=更新
   local a1 a2 a3 b1 b2 b3
@@ -439,6 +492,7 @@ EOF
 }
 
 do_update() {
+  [ -w "$0" ] || ensure_root
   local tmp remote_ver url rc
   url="https://raw.githubusercontent.com/lichengwu/vscreen/main/vscreen-linux"
   tmp=$(mktemp)
@@ -470,5 +524,6 @@ case "$MODE" in
   status)  show_status ;;
   list)    do_list ;;
   update)  do_update ;;
+  provision)  do_provision ;;
   version) echo "vscreen v$VERSION (linux)" ;;
 esac

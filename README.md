@@ -170,9 +170,10 @@ runtime (no reboot) and requires `sudo`. See
 validation data, and compatibility matrix.
 
 ```bash
-sudo vscreen mba13          # reshape the display to match your client
+vscreen provision           # one-time: root-owned install + passwordless rule
+vscreen mba13               # afterwards — no sudo, no password
 vscreen mba13@125% --print  # preview (no root needed)
-sudo vscreen off            # restore the display's original EDID
+vscreen off                 # restore the display's original EDID
 ```
 
 ## Contributing

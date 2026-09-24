@@ -57,6 +57,7 @@ refuse "系数配 off"                off@125
 refuse "--print 配 list"           list --print
 refuse "系数在前（@125% mba13）"   @125% mba13
 refuse "两个位置参数"              mba13 mbp14
+refuse "provision 配 --print"      provision --print
 
 echo "EDID 生成器（md5 固定断言，实机验证过的字节）："
 file_size() { wc -c < "$1" | tr -d '[:space:]'; }
