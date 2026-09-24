@@ -88,7 +88,7 @@ for alias in mba13 mba15 mbp14 mbp16 imac24 studio xdr ipadpro13 ipadpro129 ipad
   zvals=$(printf '%s' "$zline" | sed -E 's/.*\|([0-9]+x[0-9]+)\|([0-9]+x[0-9]+)\|([0-9]+x[0-9]+)\".*/\1|\2|\3/')
   lvals=$(./vscreen-linux __deventry "$alias" 2>/dev/null || true)
   if [ -n "$zvals" ] && [ "$zvals" = "$lvals" ]; then
-    ok "$alias 三档一致（$lvals）"
+    ok "$alias 三档一致（${lvals}）"
   else
     bad "$alias 不同步" "macOS='$zvals' linux='$lvals'"
   fi
@@ -97,6 +97,16 @@ done
 echo "版本："
 cur_ver=$(sed -n 's/^VERSION="\([^"]*\)".*/\1/p' vscreen-linux | head -1)
 ./vscreen-linux version | grep -q "v$cur_ver" && ok "version 命令（动态断言）" || bad "version" "版本不符"
+
+# pitfall 扫描：$VAR 紧跟多字节字符（全角标点/CJK）——bash 3.2 会把多字节
+# 字节吸进变量名，`set -u` 下报 unbound。脚本要能在 macOS bash 3.2 跑（管道
+# 执行忽略 shebang），所以这里对全仓统一把关。
+hits=$(grep -rnE '\$[A-Za-z_][A-Za-z0-9_]*[^ -~]' install.sh vscreen vscreen-linux test.sh test-linux.sh test-docker.sh 2>/dev/null || true)
+if [ -z "$hits" ]; then
+  ok "pitfall 扫描：无 \$VAR 紧跟多字节字符"
+else
+  bad "pitfall 扫描（请改为 \${VAR}）" "$hits"
+fi
 
 echo
 if [ $fail -eq 0 ]; then

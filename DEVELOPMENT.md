@@ -169,6 +169,12 @@ core of requirement #4; breaking it makes the remote side see multiple screens.
   unmirror / mirror loops on any multi-display host (a single display masked
   it). All tag loops use `${(f)var}` (split on newlines); `$(cmd)` in word
   position does split, which is why `get_current_res` was always fine.
+- **bash 3.2 多字节陷阱（v1.1.3 修复）**：`$VAR` 紧跟全角标点/CJK（如
+  `$OS（`）时，macOS 的 bash 3.2 会把多字节字节吸进变量名，`set -u` 下报
+  `<NAME><乱码>: unbound variable`；zsh 不受影响。`./install.sh`（zsh
+  shebang）正常、`curl … | bash`（管道忽略 shebang → bash 3.2）在
+  `install.sh:28` 直接死（实测）。全仓 13 处已统一为 `${VAR}`，两个测试套件
+  各带扫描用例防回归（`grep -rnE '\$[A-Za-z_][A-Za-z0-9_]*[^ -~]'`）。
 - Only **one positional argument** is accepted — a second one dies with a
   hint. Previously "last positional wins" silently dropped a leading
   `@factor` (`vscreen @125% mba13` applied 1470x919 with exit 0).

@@ -25,7 +25,7 @@ fi
 INST_NAME="vscreen"
 RAW_URL="https://raw.githubusercontent.com/$REPO/main/$SRC_NAME"
 
-echo "==> 平台：$OS（安装 $SRC_NAME → 命令名 vscreen）"
+echo "==> 平台：${OS}（安装 $SRC_NAME → 命令名 vscreen）"
 
 echo "==> 检查依赖 ..."
 

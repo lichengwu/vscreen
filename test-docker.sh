@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 IMG=vscreen-test:latest
-echo "==> 构建测试镜像（$IMG，ubuntu 容器）..."
+echo "==> 构建测试镜像（${IMG}，ubuntu 容器）..."
 docker build -q -t "$IMG" -f docker/Dockerfile.test . >/dev/null
 echo "==> 运行容器测试..."
 docker run --rm "$IMG" bash /repo/docker/run-tests.sh

@@ -86,7 +86,7 @@ skip_case() {  # skip_case <描述> <远端文件> <期望消息片段> —— �
   if diff -q vscreen /tmp/vscreen_upd_test >/dev/null && [[ "$UPD_OUT" == *"$3"* ]]; then
     ok "$1"
   else
-    bad "$1" "副本被改动或消息不符（$UPD_OUT）"
+    bad "$1" "副本被改动或消息不符（${UPD_OUT}）"
   fi
 }
 skip_case "旧远端不降级"          /tmp/vscreen_remote_old   "未覆盖"
@@ -105,6 +105,16 @@ echo "版本与帮助："
 ./vscreen --help     | grep -q "@系数"             && ok "帮助含 @系数说明"    || bad "帮助" "缺 @系数"
 ./vscreen --help     | grep -q "空格宽限"          && ok "帮助含空格宽限说明"  || bad "帮助" "缺 空格宽限"
 ./vscreen list       | grep -q "1470x919"          && ok "list 含 mba13 补偿档" || bad "list" "缺 1470x919"
+
+# pitfall 扫描：$VAR 紧跟多字节字符（全角标点/CJK）——bash 3.2 会把多字节
+# 字节吸进变量名，`set -u` 下报 "<NAME><乱码>: unbound variable"。zsh 不受
+# 影响，所以只在 `curl | bash`（管道忽略 shebang）时才会炸（实测 install.sh:28）。
+hits=$(grep -rnE '\$[A-Za-z_][A-Za-z0-9_]*[^ -~]' install.sh vscreen vscreen-linux test.sh test-linux.sh test-docker.sh 2>/dev/null || true)
+if [[ -z "$hits" ]]; then
+  ok "pitfall 扫描：无 \$VAR 紧跟多字节字符"
+else
+  bad "pitfall 扫描（请改为 \${VAR}）" "$hits"
+fi
 
 echo
 if [[ $fail -eq 0 ]]; then

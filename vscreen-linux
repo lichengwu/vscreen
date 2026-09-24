@@ -16,7 +16,7 @@
 
 set -euo pipefail
 
-VERSION="1.1.2"
+VERSION="1.1.3"
 EDID_DIR=/lib/firmware/edid
 # VSCREEN_DRM_SYS / VSCREEN_PARAM：测试注入缝（docker/CI 无真实 DRM
 # 时指向 fake 树；生产不设置，用真实 sysfs）
@@ -448,7 +448,7 @@ do_provision() {  # 一次性授权：root 安装 + 限定路径免密规则；�
   if [ -f "$ucopy" ]; then
     if cmp -s "$ucopy" "$dst"; then
       rm -f "$ucopy"
-      echo "✓ 已移除重复的用户副本 $ucopy（避免 PATH 遮蔽）"
+      echo "✓ 已移除重复的用户副本 ${ucopy}（避免 PATH 遮蔽）"
     else
       echo "⚠️  $ucopy 内容不同且可能遮蔽 PATH，建议手动删除" >&2
     fi
@@ -500,7 +500,7 @@ do_update() {
   tmp=$(mktemp)
   echo "检查更新 ..."
   curl -fsSL --connect-timeout 10 --max-time 30 "$url" -o "$tmp" \
-    || { echo "错误：下载失败（$url）——请检查网络后重试" >&2; rm -f "$tmp"; exit 1; }
+    || { echo "错误：下载失败（${url}）——请检查网络后重试" >&2; rm -f "$tmp"; exit 1; }
   remote_ver=$(sed -n 's/^VERSION="\([^"]*\)".*/\1/p' "$tmp" | head -1)
   if [ -z "$remote_ver" ]; then
     echo "⚠️  无法解析远端版本号，跳过更新" >&2
@@ -511,7 +511,7 @@ do_update() {
   fi
   rc=0; ver_newer "$remote_ver" "$VERSION" || rc=$?
   if [ "$rc" -ne 0 ]; then
-    echo "跳过：本地 v$VERSION 不旧于远端 v$remote_ver（远端可能是缓存旧版，未覆盖）"
+    echo "跳过：本地 v$VERSION 不旧于远端 v${remote_ver}（远端可能是缓存旧版，未覆盖）"
     rm -f "$tmp"; return 0
   fi
   chmod +x "$tmp"
