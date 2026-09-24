@@ -1,0 +1,471 @@
+#!/usr/bin/env bash
+# ============================================================================
+# vscreen-linux — vscreen 的 Linux 后端（阶段 1：EDID 固件覆盖路线）
+#
+# 机制（已在 Ubuntu 25.10 / GNOME 49 / 内核 6.17 实机验证）：
+#   1. 生成自定义 EDID（产品名 "vscreen"）→ /lib/firmware/edid/
+#   2. echo "<conn>:edid/vscreen-<WxH>.bin" > /sys/module/drm/parameters/edid_firmware
+#   3. echo detect > /sys/class/drm/<card>-<conn>/status   （内核重读 EDID）
+#   4. chvt 往返                                            （compositor 全量重探）
+# 详见 docs/linux-port-design.md。
+#
+# 与 macOS 版 CLI 完全一致（设备档位/@缩放/宽限输入/--print/off/status/list）；
+# 差异：切换需 root（sudo vscreen ...）；默认 2x 物理档（HiDPI，macOS 等价），
+# 可用 --logical 退回逻辑档。
+# ============================================================================
+
+set -euo pipefail
+
+VERSION="1.1.2"
+EDID_DIR=/lib/firmware/edid
+PARAM=/sys/module/drm/parameters/edid_firmware
+DRM_SYS=/sys/class/drm
+
+# --- 设备表（与 macOS vscreen 的 DEVICES 同步；test-linux.sh 有双向断言）---
+# 格式："native|compensated|full"
+dev_entry() {
+  case "$1" in
+    mba13)      echo "1470x956|1470x919|2560x1664" ;;
+    mba15)      echo "1710x1107|1710x1069|2880x1864" ;;
+    mbp14)      echo "1512x982|1512x945|3024x1964" ;;
+    mbp16)      echo "1728x1117|1728x1080|3456x2234" ;;
+    imac24)     echo "2240x1260|2240x1236|4480x2520" ;;
+    studio)     echo "2560x1440|2560x1416|5120x2880" ;;
+    xdr)        echo "3008x1692|3008x1668|6016x3384" ;;
+    ipadpro13)  echo "1376x1032|1376x1032|2752x2064" ;;
+    ipadpro129) echo "1366x1024|1366x1024|2732x2048" ;;
+    ipadair13)  echo "1366x1024|1366x1024|2732x2048" ;;
+    *) return 1 ;;
+  esac
+}
+dev_synonym() {
+  case "$1" in
+    air13)           echo mba13 ;;
+    air15)           echo mba15 ;;
+    pro14)           echo mbp14 ;;
+    pro16)           echo mbp16 ;;
+    imac)            echo imac24 ;;
+    prodisplay|xdr6k) echo xdr ;;
+    pro13)           echo ipadpro13 ;;
+    pro129)          echo ipadpro129 ;;
+    ipadair|ipad13)  echo ipadair13 ;;
+    *) echo "$1" ;;
+  esac
+}
+dev_name() {
+  case "$1" in
+    mba13) echo "MacBook Air 13" ;;   mba15) echo "MacBook Air 15" ;;
+    mbp14) echo "MacBook Pro 14" ;;   mbp16) echo "MacBook Pro 16" ;;
+    imac24) echo "iMac 24" ;;         studio) echo "Studio Display" ;;
+    xdr) echo "Pro Display XDR" ;;
+    ipadpro13) echo "iPad Pro 13" ;;  ipadpro129) echo "iPad Pro 12.9" ;;
+    ipadair13) echo "iPad Air 13" ;;
+  esac
+}
+DEV_ORDER="mba13 mba15 mbp14 mbp16 imac24 studio xdr ipadpro13 ipadpro129 ipadair13"
+
+# ---------- 帮助 ----------
+print_help() {
+  cat <<EOF
+vscreen v$VERSION (linux) — 匹配远程客户端设备的桌面分辨率
+
+用法：
+  vscreen <设备>[@系数]        匹配设备（补偿档），可带缩放系数
+  vscreen <设备>-native[@系数] 用原生逻辑分辨率
+  vscreen <设备>-full[@系数]   用 1:1 物理档
+  vscreen <WxH>[@系数]         直接按分辨率（W、H 间可用 x / X / 空格）
+  vscreen off                  恢复显示器原始 EDID
+  vscreen status               当前 connector / EDID 覆盖状态
+  vscreen list                 列出支持的设备与三档分辨率
+  vscreen version | -v | --version   查看版本号
+  vscreen -h | --help          显示本帮助
+
+选项：
+  --print                      只预览将生成的 EDID/计划，不修改任何东西
+  --logical                    用逻辑档 EDID（scale 1）；默认 2x 物理档（HiDPI）
+  --no-vt                      跳过 chvt 循环（真机有 HPD 时可免）
+
+缩放系数（@后缀）：
+  125% / 1.25 / 80 等价（无 % 且 >3 视为百分数），范围 25%–400%
+  125% = 内容放大 25%：分辨率等比 ÷1.25，宽高比不变
+  空格宽限：mba13@125% = mba13 @125% = mba13 @ 125%；WxH 带小数自动取整
+
+注意：切换与 off 需要 root（sudo vscreen ...）；provision 见文档。
+
+项目：https://github.com/lichengwu/vscreen
+EOF
+}
+die() { echo; echo "错误：$1" >&2; echo >&2; print_help >&2; exit 1; }
+
+# 测试钩子（test-linux.sh 设备表同步断言用；须在参数解析前处理）
+if [ "${1:-}" = "__deventry" ] && [ -n "${2:-}" ]; then
+  dev_entry "$2" && exit 0 || exit 1
+fi
+
+# ---------- 数值工具 ----------
+scale_resolution() {  # $1=WxH $2=k → stdout: 新 WxH（两维同除 k 后就近取整）
+  awk -v w="${1%%x*}" -v h="${1##*x}" -v k="$2" \
+    'BEGIN{ printf "%dx%d", int(w/k+0.5), int(h/k+0.5) }'
+}
+round_resolution() {  # $1=WxH（可含小数）→ stdout: 整数 WxH
+  awk -v w="${1%%x*}" -v h="${1##*x}" \
+    'BEGIN{ printf "%dx%d", int(w+0.5), int(h+0.5) }'
+}
+
+# ---------- EDID 生成（内嵌 python3，逻辑同 tools/gen_edid.py，已实机验证）----------
+gen_edid() {  # $1=W $2=H $3=输出文件 → 0 成功
+  python3 - "$1" "$2" "$3" <<'PYEOF'
+import sys
+
+def make_edid(ha, va, name=b"vscreen", hsize_mm=310, vsize_mm=195):
+    hfp, hsw, hbp, vfp, vsw, vbp = 88, 44, 156, 3, 5, 27
+    ht, vt = ha + hfp + hsw + hbp, va + vfp + vsw + vbp
+    hb, vb = ht - ha, vt - va
+    clock10k = round(ht * vt * 60 / 10000)
+    if not (0 < clock10k < 0x10000 and ha < 0x1000 and va < 0x1000
+            and hb < 0x1000 and vb < 0x1000):
+        raise ValueError("mode out of EDID range")
+    d = bytearray(128)
+    d[0:8] = bytes([0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00])
+    mid = (ord('V') - 64 << 10) | (ord('S') - 64 << 5) | (ord('C') - 64)
+    d[8], d[9] = (mid >> 8) & 0xFF, mid & 0xFF
+    d[10], d[11], d[12:16] = 0x01, 0x00, bytes([1, 0, 0, 0])
+    d[16], d[17] = 0, 36
+    d[18], d[19], d[20] = 1, 3, 0x00
+    d[21], d[22], d[23], d[24] = hsize_mm // 10, vsize_mm // 10, 120, 0x00
+    for i in range(38, 54, 2):
+        d[i], d[i + 1] = 0x01, 0x01
+    t = bytearray(18)
+    t[0], t[1] = clock10k & 0xFF, (clock10k >> 8) & 0xFF
+    t[2], t[3] = ha & 0xFF, hb & 0xFF
+    t[4] = ((ha >> 8) << 4) | ((hb >> 8) & 0x0F)
+    t[5], t[6] = va & 0xFF, vb & 0xFF
+    t[7] = ((va >> 8) << 4) | ((vb >> 8) & 0x0F)
+    t[8] = hfp & 0xFF
+    t[9] = (((hfp >> 8) & 3) << 6) | (((hsw >> 8) & 3) << 4) | \
+           (((vfp >> 8) & 3) << 2) | ((vsw >> 8) & 3)
+    t[10] = hsw & 0xFF
+    t[11] = ((vfp & 0x0F) << 4) | (vsw & 0x0F)
+    t[12], t[13] = hsize_mm & 0xFF, (hsize_mm >> 8) & 0xFF
+    t[14], t[15] = vsize_mm & 0xFF, (vsize_mm >> 8) & 0xFF
+    t[17] = 0x18
+    d[54:72] = t
+    nm = bytearray(18)
+    nm[0:5] = bytes([0, 0, 0, 0xFC, 0])
+    nm[5:18] = name[:13].ljust(13, b' ')
+    d[72:90] = nm
+    d[126] = 0
+    d[127] = (0x100 - (sum(d) & 0xFF)) & 0xFF
+    if sum(d) & 0xFF:
+        raise ValueError("checksum error")
+    return bytes(d)
+
+ha, va, out = int(sys.argv[1]), int(sys.argv[2]), sys.argv[3]
+if ha <= 0 or va <= 0:
+    raise SystemExit("invalid mode")
+with open(out, "wb") as f:
+    f.write(make_edid(ha, va))
+PYEOF
+}
+
+# ---------- connector 探测 ----------
+find_connector() {  # stdout: cardN-<conn> 完整 sysfs 名；优先 enabled 的
+  local c best
+  best=""
+  for c in "$DRM_SYS"/card[0-9]*-*; do
+    [ -f "$c/status" ] || continue
+    [ "$(cat "$c/status" 2>/dev/null || true)" = "connected" ] || continue
+    [ -s "$c/edid" ] || continue                      # 排除 vkms 等无 EDID 的虚拟卡
+    if [ -z "$best" ]; then best="$c"; fi
+    [ "$(cat "$c/enabled" 2>/dev/null || true)" = "enabled" ] && best="$c"
+  done
+  [ -n "$best" ] || return 1
+  echo "${best##*/}"
+}
+
+vt_cycle() {
+  local cur other
+  cur=$(fgconsole 2>/dev/null) || cur=""
+  case "$cur" in ''|*[!0-9]*) cur=2 ;; esac
+  if [ "$cur" = 3 ]; then other=2; else other=3; fi
+  chvt "$other" 2>/dev/null || true
+  sleep 1
+  chvt "$cur" 2>/dev/null || true
+  sleep 2
+}
+
+# --- 参数解析（宽限输入：与 macOS 版同语义；bash 实现）---
+NO_MIRROR=false
+PRINT=false
+LOGICAL=false
+NO_VT=false
+ARG=""
+SCALE="" SCALE_K="" S_BASE="" S_DESC="" S_RES=""
+POS_COUNT=0
+
+argv=("$@")
+ARGS=()
+lastpos=-1
+i=0
+while [ "$i" -lt "${#argv[@]}" ]; do
+  a=${argv[$i]}
+  if [ "${a#-}" != "$a" ]; then                       # 旗标透传
+    ARGS+=("$a"); i=$((i + 1)); continue
+  fi
+  if [ "${a#@}" != "$a" ] && [ "$lastpos" -ge 0 ]; then
+    if [ "$a" = "@" ]; then                           # “@ 125%”：系数在下一参
+      n=$((i + 1))
+      if [ "$n" -lt "${#argv[@]}" ] && [ "${argv[$n]}" != "" ] \
+         && [ "${argv[$n]#-}" = "${argv[$n]}" ] \
+         && [ "$(printf '%s' "${argv[$n]}" | grep -cE '^[0-9.]+%?$')" = 1 ]; then
+        a="@${argv[$n]}"; i="$n"
+      else
+        ARGS+=("$a"); i=$((i + 1)); continue
+      fi
+    fi
+    ARGS[$lastpos]="${ARGS[$lastpos]}${a}"
+    i=$((i + 1)); continue
+  fi
+  if [ "$lastpos" -ge 0 ] \
+     && [ "$(printf '%s' "${ARGS[$lastpos]}" | grep -cE '^[0-9]+([.][0-9]+)?$')" = 1 ] \
+     && [ "$(printf '%s' "$a" | grep -cE '^[0-9]+([.][0-9]+)?(@[0-9.]+%?)?$')" = 1 ]; then
+    ARGS[$lastpos]="${ARGS[$lastpos]}x${a}"            # “1512 945” 拼成 WxH
+  else
+    ARGS+=("$a"); lastpos=$(( ${#ARGS[@]} - 1 ))
+  fi
+  i=$((i + 1))
+done
+
+for a in "${ARGS[@]}"; do
+  case "$a" in
+    --no-mirror) NO_MIRROR=true ;;
+    --print)     PRINT=true ;;
+    --logical)   LOGICAL=true ;;
+    --no-vt)     NO_VT=true ;;
+    -h|--help)   print_help; exit 0 ;;
+    -v|--version) ARG="version" ;;
+    *)
+      POS_COUNT=$((POS_COUNT + 1))
+      if [ "$POS_COUNT" -gt 1 ]; then
+        die "一次只能指定一个设备/WxH（多余参数 \"$a\"）；系数请写成 mba13@125%"
+      fi
+      ARG="$a" ;;
+  esac
+done
+
+if printf '%s' "$ARG" | grep -q '@'; then
+  SCALE=${ARG##*@}
+  [ -n "$SCALE" ] || die "缩放系数为空（写法：mba13@125%）"
+  ARG=${ARG%@*}
+  SF_RAW=${SCALE//\%/}
+  printf '%s' "$SF_RAW" | grep -qE '^[0-9]+([.][0-9]+)?$' \
+    || die "无效缩放系数 \"$SCALE\"（写法：125% / 1.25 / 80）"
+  SCALE_K=$(awk -v s="$SF_RAW" 'BEGIN{ if (s+0>3) s=s/100; printf "%.6g", s+0 }')
+  awk -v k="$SCALE_K" 'BEGIN{ exit !(k>=0.25 && k<=4) }' \
+    || die "缩放系数 $SCALE 超出范围（25%–400%）"
+fi
+
+# --- 解析设备/WxH ---
+MODE="apply"
+case "$ARG" in
+  "") die "缺少参数（<设备|WxH|off|status|list|version>）" ;;
+  off|none)   MODE="off" ;;
+  status)     MODE="status" ;;
+  list)       MODE="list" ;;
+  version)    MODE="version" ;;
+  update)     MODE="update" ;;
+  *)
+    key=$ARG
+    tier=""
+    if printf '%s' "$key" | grep -q -- '-native$'; then tier=native; key=${key%-native}
+    elif printf '%s' "$key" | grep -q -- '-full$'; then tier=full; key=${key%-full}; fi
+    key=$(dev_synonym "$key")
+    entry=$(dev_entry "$key" || true)
+    if [ -n "$entry" ]; then
+      native=${entry%%|*}; rest=${entry#*|}
+      comp=${rest%%|*}; full=${rest##*|}
+      case "$tier" in
+        native) S_RES="$native"; S_DESC="$key native 档" ;;
+        full)   S_RES="$full";   S_DESC="$key full 档" ;;
+        *)      S_RES="$comp";   S_DESC="$key 补偿档" ;;
+      esac
+    elif printf '%s' "$ARG" | grep -qE '^[0-9]+([.][0-9]+)?[xX][0-9]+([.][0-9]+)?$'; then
+      S_RES=$(round_resolution "$(printf '%s' "$ARG" | tr 'X' 'x')")
+      S_DESC="自定义分辨率"
+    else
+      die "未知参数 \"$ARG\"（应为设备别名、WxH 或 off/status/list/version）"
+    fi
+    ;;
+esac
+
+[ -n "$SCALE" ] && [ "$MODE" != "apply" ] \
+  && die "缩放系数只能搭配设备或 WxH（如 mba13@125%），不能与 \"$ARG\" 搭配"
+[ "$PRINT" = true ] && [ "$MODE" != "apply" ] \
+  && die "--print 只用于预览设备 / WxH 的分辨率换算"
+
+if [ -n "$SCALE_K" ]; then
+  S_BASE="$S_RES"
+  S_RES=$(scale_resolution "$S_RES" "$SCALE_K")
+fi
+
+# ---------- 模式实现 ----------
+do_list() {
+  echo "支持的设备（默认用 compensated 补偿档）："
+  echo
+  printf "  %-11s %-20s %-16s %-16s %s\n" "别名" "设备" "compensated" "native" "full(1:1)"
+  local key entry rest
+  for key in $DEV_ORDER; do
+    entry=$(dev_entry "$key")
+    rest=${entry#*|}
+    printf "  %-11s %-20s %-16s %-16s %s\n" \
+      "$key" "$(dev_name "$key")" "${rest%%|*}" "${entry%%|*}" "${rest##*|}"
+  done
+  echo
+  echo "用法：vscreen <别名> | <别名>-native | <别名>-full | <WxH>"
+  echo "示例：vscreen mbp14         # 1512x945（补偿档）"
+  echo "      vscreen mba13@125%    # 1470x919 ÷1.25 → 1176x735"
+}
+
+need_root() {
+  [ "$(id -u)" = 0 ] || die "此操作需要 root（sudo vscreen ...）"
+}
+
+show_status() {
+  echo "vscreen v$VERSION (linux) 状态："
+  local c
+  if [ -f "$PARAM" ]; then
+    echo "  EDID 覆盖参数: '$(cat "$PARAM")'"
+  else
+    echo "  EDID 覆盖参数: （不可用：非 Linux / 无 DRM）"
+  fi
+  for c in "$DRM_SYS"/card[0-9]*-*; do
+    [ -f "$c/status" ] || continue
+    printf "  %-22s status=%-12s enabled=%-10s modes=%s\n" \
+      "${c##*/}" "$(cat "$c/status" 2>/dev/null)" "$(cat "$c/enabled" 2>/dev/null)" \
+      "$(head -1 "$c/modes" 2>/dev/null)"
+  done
+}
+
+do_off() {
+  need_root
+  local c
+  c=$(find_connector) || die "找不到可用 connector"
+  echo "恢复显示器原始 EDID ..."
+  printf '\n' > "$PARAM"
+  echo detect > "$DRM_SYS/$c/status"
+  sleep 1
+  [ "$NO_VT" = true ] || vt_cycle
+  echo "完成 ✅（$c 已恢复原始 EDID）"
+}
+
+do_apply() {
+  # --print：只打印计划（免 root）
+  if [ "$PRINT" = true ]; then
+    local base res tag
+    base="$S_RES"; res="$S_RES"
+    if [ "$LOGICAL" != true ]; then
+      res=$(awk -v w="${S_RES%%x*}" -v h="${S_RES##*x}" \
+        'BEGIN{ printf "%dx%d", int(w*2+0.5), int(h*2+0.5) }')
+      tag="（EDID 2x 物理档，mutter scale 2）"
+    else
+      tag="（EDID 逻辑档，scale 1）"
+    fi
+    if [ -n "$SCALE_K" ]; then
+      echo "${S_DESC} ${S_BASE} @ ${SCALE} → ${base}（逻辑）→ ${res}${tag}"
+    else
+      echo "${S_DESC} → ${base}（逻辑）→ ${res}${tag}"
+    fi
+    return 0
+  fi
+
+  need_root
+  local c phys file
+  c=$(find_connector) || die "找不到可用的显示器 connector（connected 且有 EDID）"
+
+  if [ "$LOGICAL" = true ]; then
+    phys="$S_RES"
+  else
+    phys=$(awk -v w="${S_RES%%x*}" -v h="${S_RES##*x}" \
+      'BEGIN{ printf "%dx%d", int(w*2+0.5), int(h*2+0.5) }')
+  fi
+  file="$EDID_DIR/vscreen-${phys}.bin"
+
+  mkdir -p "$EDID_DIR"
+  gen_edid "${phys%%x*}" "${phys##*x}" "$file" \
+    || die "EDID 生成失败（${phys}）"
+
+  echo "${c##*card*-}:edid/vscreen-${phys}.bin" > "$PARAM"
+  echo detect > "$DRM_SYS/$c/status"
+  sleep 2
+
+  # 校验内核确实装载了我们的 EDID
+  local got want
+  got=$(md5sum "$DRM_SYS/$c/edid" 2>/dev/null | awk '{print $1}')
+  want=$(md5sum "$file" | awk '{print $1}')
+  if [ "$got" != "$want" ]; then
+    echo "⚠️  内核未装载新 EDID（got ${got:-空}）——connector：${c}" >&2
+    exit 1
+  fi
+  printf '%s' "${phys%%x*}x${phys##*x}" | grep -qxf <(cat "$DRM_SYS/$c/modes" 2>/dev/null) \
+    || echo "⚠️  模式 ${phys} 未出现在 connector 模式表（可能超出硬件限制，如 VRAM）" >&2
+
+  [ "$NO_VT" = true ] || vt_cycle
+  echo "完成 ✅ ${c} = ${phys}（物理档，逻辑 ${S_RES}）  [vscreen]"
+  show_status
+}
+
+# --- 自更新（拉 vscreen-linux；版本比较只升不降）---
+ver_newer() {  # $1 候选 $2 当前 → 0=更新
+  local a1 a2 a3 b1 b2 b3
+  IFS='.' read -r a1 a2 a3 <<EOF
+$1
+EOF
+  IFS='.' read -r b1 b2 b3 <<EOF
+$2
+EOF
+  local v
+  for v in "$a1" "$a2" "${a3:-}" "$b1" "$b2" "${b3:-}"; do
+    [ -n "$v" ] && printf '%s' "$v" | grep -qE '^[0-9]+$' || return 1
+  done
+  [ "$a1" -gt "$b1" ] && return 0
+  [ "$a1" -lt "$b1" ] && return 1
+  [ "$a2" -gt "$b2" ] && return 0
+  [ "$a2" -lt "$b2" ] && return 1
+  [ "${a3:-0}" -gt "${b3:-0}" ] && return 0
+  return 1
+}
+
+do_update() {
+  local tmp remote_ver url rc
+  url="https://raw.githubusercontent.com/lichengwu/vscreen/main/vscreen-linux"
+  tmp=$(mktemp)
+  echo "检查更新 ..."
+  curl -fsSL --connect-timeout 10 --max-time 30 "$url" -o "$tmp" \
+    || { echo "错误：下载失败（$url）——请检查网络后重试" >&2; rm -f "$tmp"; exit 1; }
+  remote_ver=$(sed -n 's/^VERSION="\([^"]*\)".*/\1/p' "$tmp" | head -1)
+  if [ -z "$remote_ver" ]; then
+    echo "⚠️  无法解析远端版本号，跳过更新" >&2
+    rm -f "$tmp"; return 0
+  fi
+  if [ "$remote_ver" = "$VERSION" ]; then
+    echo "已是最新版本 v$VERSION ✅"; rm -f "$tmp"; return 0
+  fi
+  rc=0; ver_newer "$remote_ver" "$VERSION" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "跳过：本地 v$VERSION 不旧于远端 v$remote_ver（远端可能是缓存旧版，未覆盖）"
+    rm -f "$tmp"; return 0
+  fi
+  chmod +x "$tmp"
+  mv "$tmp" "$0" || { rm -f "$tmp"; echo "错误：无法写入 $0（权限？）" >&2; exit 1; }
+  echo "已更新 v$VERSION -> v$remote_ver ✅（重新运行即生效）"
+}
+
+# ---------- 执行 ----------
+case "$MODE" in
+  apply)   do_apply ;;
+  off)     do_off ;;
+  status)  show_status ;;
+  list)    do_list ;;
+  update)  do_update ;;
+  version) echo "vscreen v$VERSION (linux)" ;;
+esac

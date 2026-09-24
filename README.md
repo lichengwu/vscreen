@@ -160,6 +160,21 @@ vscreen 1470 919@125      # raw WxH + factor
 
 See the [development guide](DEVELOPMENT.md) to add your own device resolutions.
 
+## Linux (experimental)
+
+The same CLI (device tiers, `@` scale factor, tolerant input, `--print`) is
+available for Linux desktops via a kernel **EDID-firmware override** —
+validated live on Ubuntu 25.10 / GNOME 49 / Wayland. Switching happens at
+runtime (no reboot) and requires `sudo`. See
+[docs/linux-port-design.md](docs/linux-port-design.md) for the mechanism,
+validation data, and compatibility matrix.
+
+```bash
+sudo vscreen mba13          # reshape the display to match your client
+vscreen mba13@125% --print  # preview (no root needed)
+sudo vscreen off            # restore the display's original EDID
+```
+
 ## Contributing
 
 - Bugs & feature requests: [open an issue](https://github.com/lichengwu/vscreen/issues)

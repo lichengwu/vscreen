@@ -135,6 +135,19 @@ vscreen 1470 919@125      # 直接 WxH + 系数
 
 要适配自己的设备分辨率，看 [开发指南](DEVELOPMENT.md)。
 
+## Linux（实验性）
+
+同一套 CLI（设备档位 / @缩放 / 宽限输入 / --print）已支持 Linux 桌面——基于
+内核 **EDID 固件覆盖**机制，已在 Ubuntu 25.10 / GNOME 49 / Wayland 上实机验证；
+运行时切换（免重启），需要 sudo。机制、实验数据与兼容性矩阵见
+[docs/linux-port-design.md](docs/linux-port-design.md)。
+
+```bash
+sudo vscreen mba13          # 把显示器重塑为客户端匹配分辨率
+vscreen mba13@125% --print  # 预览换算（免 root）
+sudo vscreen off            # 恢复显示器原始 EDID
+```
+
 ## 参与贡献
 
 - 问题反馈 / 功能建议：[提个 issue](https://github.com/lichengwu/vscreen/issues)
