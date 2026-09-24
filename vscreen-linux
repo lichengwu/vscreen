@@ -170,12 +170,15 @@ PYEOF
 
 # ---------- connector 探测 ----------
 find_connector() {  # stdout: cardN-<conn> 完整 sysfs 名；优先 enabled 的
-  local c best
+  local c best n
   best=""
   for c in "$DRM_SYS"/card[0-9]*-*; do
     [ -f "$c/status" ] || continue
     [ "$(cat "$c/status" 2>/dev/null || true)" = "connected" ] || continue
-    [ -s "$c/edid" ] || continue                      # 排除 vkms 等无 EDID 的虚拟卡
+    # 有 EDID（排除 vkms 等不读 EDID 的虚拟卡）。注：sysfs 二进制属性的
+    # stat 尺寸恒为 0，必须按实际读出的字节数判断，不能用 [ -s ]
+    n=$(cat "$c/edid" 2>/dev/null | wc -c | tr -d ' ')
+    [ "${n:-0}" -gt 0 ] || continue
     if [ -z "$best" ]; then best="$c"; fi
     [ "$(cat "$c/enabled" 2>/dev/null || true)" = "enabled" ] && best="$c"
   done
@@ -394,7 +397,7 @@ do_apply() {
   gen_edid "${phys%%x*}" "${phys##*x}" "$file" \
     || die "EDID 生成失败（${phys}）"
 
-  echo "${c##*card*-}:edid/vscreen-${phys}.bin" > "$PARAM"
+  echo "${c#card*-}:edid/vscreen-${phys}.bin" > "$PARAM"
   echo detect > "$DRM_SYS/$c/status"
   sleep 2
 
