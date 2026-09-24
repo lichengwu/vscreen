@@ -110,6 +110,10 @@ parse:  pre-join adjacent numeric args        "1512 945"      -> "1512x945"  (x 
 ```bash
 zsh -n vscreen                # syntax check
 ./test.sh                     # black-box regression (no display changes)
+./test-linux.sh               # Linux backend regression (runs anywhere, incl. macOS)
+./test-docker.sh              # full Linux suite in an ubuntu container: root paths
+                              #   via fake-sysfs seams (VSCREEN_DRM_SYS/VSCREEN_PARAM),
+                              #   EDID byte-parity, provision passwordless loop
 ./vscreen list                # new device present, tiers correct
 ./vscreen <your-alias>        # end-to-end: routes to apply and sets res
 ./vscreen <your-alias>-native

@@ -18,8 +18,10 @@ set -euo pipefail
 
 VERSION="1.1.2"
 EDID_DIR=/lib/firmware/edid
-PARAM=/sys/module/drm/parameters/edid_firmware
-DRM_SYS=/sys/class/drm
+# VSCREEN_DRM_SYS / VSCREEN_PARAM：测试注入缝（docker/CI 无真实 DRM
+# 时指向 fake 树；生产不设置，用真实 sysfs）
+PARAM=${VSCREEN_PARAM:-/sys/module/drm/parameters/edid_firmware}
+DRM_SYS=${VSCREEN_DRM_SYS:-/sys/class/drm}
 
 # --- 设备表（与 macOS vscreen 的 DEVICES 同步；test-linux.sh 有双向断言）---
 # 格式："native|compensated|full"

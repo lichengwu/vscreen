@@ -99,6 +99,10 @@ install.sh         # 平台探测：macOS 装 vscreen，Linux 装 vscreen-linux�
 ## 7. 路线图
 
 1. **阶段 1（本实现）**：`vscreen-linux` EDID 后端 + 生成器 + 同步测试；VM 试用。
-2. 阶段 2：真机（Intel/AMD/NVIDIA）验证 + VT 免除判定 + x11 纯 xrandr legacy 后端。
-3. 阶段 3：wlroots 后端（`swaymsg create_output` / `wlr-randr`）。
-4. 阶段 4：KDE 调研；GitHub Actions CI（Xvfb 可测 x11 后端；EDID 生成器纯函数可全测）。
+2. **阶段 1b（已完成）**：**Docker 测试harness**（`./test-docker.sh`）——ubuntu 容器内
+   跑全量 Linux 套件：注入缝（`VSCREEN_DRM_SYS` / `VSCREEN_PARAM`）指向 fake
+   sysfs 树，覆盖 root 路径（md5 网关、内嵌生成器字节一致性、apply/off 全流程）
+   与 provision 免密闭环；GitHub Actions 可直接复用。
+3. 阶段 2：真机（Intel/AMD/NVIDIA）验证 + VT 免除判定 + x11 纯 xrandr legacy 后端。
+4. 阶段 3：wlroots 后端（`swaymsg create_output` / `wlr-randr`）。
+5. 阶段 4：KDE 调研。

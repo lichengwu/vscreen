@@ -1,0 +1,8 @@
+# 基底用本地已有镜像（纯用户态测试，无内核依赖）；
+# registry 可达时可改回 ubuntu:25.10（与目标机一致）
+FROM ubuntu:24.04
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 sudo \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /repo
+COPY . /repo
