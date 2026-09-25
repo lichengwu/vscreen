@@ -73,7 +73,7 @@ cur_ver=$(sed -n 's/^VERSION="\([^"]*\)".*/\1/p' vscreen | head -1)
 sed 's/^VERSION="[^"]*"/VERSION="1.0.0"/'  vscreen > /tmp/vscreen_remote_old
 sed 's/^VERSION="[^"]*"/VERSION="9.9.9"/'  vscreen > /tmp/vscreen_remote_new
 sed "s/^VERSION=\"[^\"]*\"/VERSION=\"$cur_ver\"/" vscreen > /tmp/vscreen_remote_eq
-sed 's/^VERSION="[^"]*"/VERSION="1.1.10"/' vscreen > /tmp/vscreen_remote_num
+sed 's/^VERSION="[^"]*"/VERSION="1.2.10"/' vscreen > /tmp/vscreen_remote_num
 sed 's/^VERSION="[^"]*"/VERSION="garbage"/' vscreen > /tmp/vscreen_remote_gbg
 grep -v '^VERSION=' vscreen > /tmp/vscreen_remote_nover
 
@@ -94,7 +94,7 @@ skip_case "等版本跳过"            /tmp/vscreen_remote_eq    "已是最新"
 skip_case "垃圾远端版本不覆盖"    /tmp/vscreen_remote_gbg   "无法比较"
 skip_case "远端无版本行不覆盖"    /tmp/vscreen_remote_nover "无法解析"
 run_upd /tmp/vscreen_remote_num
-if grep -q 'VERSION="1.1.10"' /tmp/vscreen_upd_test; then ok "数值段比较 1.1.10 > 1.1.1 升级"; else bad "数值段比较升级" "未升级到 1.1.10"; fi
+if grep -q 'VERSION="1.2.10"' /tmp/vscreen_upd_test; then ok "数值段比较 1.2.10 > 1.2.0 升级"; else bad "数值段比较升级" "未升级到 1.2.10"; fi
 run_upd /tmp/vscreen_remote_new
 if grep -q 'VERSION="9.9.9"' /tmp/vscreen_upd_test; then ok "新远端正常升级"; else bad "新远端正常升级" "未升级到 9.9.9"; fi
 

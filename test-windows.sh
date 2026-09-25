@@ -126,6 +126,17 @@ else
     bad "install.sh" "missing Windows platform dispatch"
 fi
 
+echo "===== F. Version sync (3 platforms) ====="
+mac_ver=$(sed -n 's/^VERSION="\([^"]*\)".*/\1/p' vscreen | head -1)
+linux_ver=$(sed -n 's/^VERSION="\([^"]*\)".*/\1/p' vscreen-linux | head -1)
+win_ver=$(grep -o '\$VERSION = "[^"]*"' vscreen-windows.ps1 | grep -o '[0-9.]*' | head -1)
+
+if [ "$mac_ver" = "$linux_ver" ] && [ "$linux_ver" = "$win_ver" ] && [ -n "$mac_ver" ]; then
+    ok "3-platform version sync: v$mac_ver"
+else
+    bad "Version mismatch" "mac=$mac_ver linux=$linux_ver win=$win_ver"
+fi
+
 echo
 if [ $fail -eq 0 ]; then
     echo "All tests passed: $pass items"

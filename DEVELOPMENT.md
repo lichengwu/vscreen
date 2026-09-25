@@ -8,17 +8,32 @@ release of vscreen.
 ## 1. Project layout
 
 ```
-vscreen         # main program (single zsh file): device table + BetterDisplay glue
-install.sh      # pipe-safe one-line installer (curl | bash friendly)
-test.sh         # black-box regression tests (CLI paths only, no BetterDisplay needed)
-README.md       # English user docs
-README.zh-CN.md # Chinese user docs
-DEVELOPMENT.md  # this file
+vscreen                 # macOS backend (zsh): BetterDisplay + virtual screen management
+vscreen-linux           # Linux backend (bash): EDID firmware override + sysfs + VT
+vscreen-windows.ps1     # Windows backend (PowerShell): Parsec VDD + registry + Win32 API
+install.sh              # platform-detecting installer (macOS/Linux/Windows)
+test.sh                 # macOS backend tests (51 assertions)
+test-linux.sh           # Linux backend tests (41 assertions, runs anywhere)
+test-windows.sh         # Windows backend tests (26 assertions, runs anywhere)
+test-docker.sh          # Docker container tests for Linux backend (15 assertions)
+docker/Dockerfile.test  # Docker test image (ubuntu 24.04)
+docker/run-tests.sh     # in-container test runner
+tools/gen_edid.py       # EDID 1.3 generator (validated byte-for-byte)
+docs/                   # design docs & validation reports
+README.md               # English user docs
+README.zh-CN.md         # Chinese user docs
+DEVELOPMENT.md          # this file
 ```
 
-One zsh script, no build step. Runtime deps:
-[BetterDisplay](https://betterdisplay.pro) (virtual-screen backend) and
-`python3` (parses BetterDisplay JSON output).
+Three backends, one CLI surface, one device table. No build step.
+
+**Runtime deps by platform:**
+
+| Platform | Backend script | Dependencies |
+| --- | --- | --- |
+| macOS | `vscreen` (zsh) | BetterDisplay, python3 |
+| Linux | `vscreen-linux` (bash) | python3 (EDID generation) |
+| Windows | `vscreen-windows.ps1` (PowerShell) | Parsec VDD (installed via `provision`) |
 
 ## 2. Device → resolution table
 
@@ -108,12 +123,12 @@ parse:  pre-join adjacent numeric args        "1512 945"      -> "1512x945"  (x 
 ## 5. Verification
 
 ```bash
-zsh -n vscreen                # syntax check
-./test.sh                     # black-box regression (no display changes)
-./test-linux.sh               # Linux backend regression (runs anywhere, incl. macOS)
-./test-docker.sh              # full Linux suite in an ubuntu container: root paths
-                              #   via fake-sysfs seams (VSCREEN_DRM_SYS/VSCREEN_PARAM),
-                              #   EDID byte-parity, provision passwordless loop
+zsh -n vscreen                # macOS syntax check
+bash -n vscreen-linux           # Linux syntax check
+./test.sh                     # macOS regression (51 assertions)
+./test-linux.sh               # Linux regression (41 assertions)
+./test-windows.sh             # Windows regression (26 assertions)
+./test-docker.sh              # Docker container tests (15 assertions)
 ./vscreen list                # new device present, tiers correct
 ./vscreen <your-alias>        # end-to-end: routes to apply and sets res
 ./vscreen <your-alias>-native
@@ -141,7 +156,7 @@ zsh -n vscreen                # syntax check
 Think carefully before changing this invariant: single-screen + reuse is the
 core of requirement #4; breaking it makes the remote side see multiple screens.
 
-## 7. CLI quirks already handled
+## 7. CLI quirks already handled (macOS)
 
 - BetterDisplay CLI returns `Failed` when setting the **already-active**
   resolution → code only sets when `cur != S_RES`.
@@ -157,34 +172,42 @@ core of requirement #4; breaking it makes the remote side see multiple screens.
 - `@<factor>` is stripped after the flag loop, normalized/validated up front,
   and applied to `S_RES` after dispatch; a factor is only legal on
   resolution-setting arguments (`off@125%` dies).
+- Only **one positional argument** is accepted — a second one dies with a
+  hint. Previously "last positional wins" silently dropped a leading
+  `@factor` (`vscreen @125% mba13` applied 1470x919 with exit 0).
+
+### Linux quirks
+
 - **zsh quirk: inside a function `$0` is the *function name*, not the script
-  path** — `mv "$tmp" "$0"` in `do_update` wrote a stray `do_update` file
-  instead of updating the script (self-update never worked before v1.1.1).
-  `SCRIPT_PATH="$0"` is captured at top level and used as the mv target.
+  path** — `SCRIPT_PATH="$0"` is captured at top level and used as the mv target.
 - zsh flag-argument gotcha: `(s/./)` splits on `.` while `(s./.)` splits on
   `/` — the enclosure character is a delimiter, not the separator.
   `ver_newer` initially split on the wrong char and rejected every update.
 - **zsh does NOT word-split unquoted `$var`** (unlike bash/sh): `for t in $tags`
-  iterated once over a newline blob, silently breaking the disconnect /
-  unmirror / mirror loops on any multi-display host (a single display masked
-  it). All tag loops use `${(f)var}` (split on newlines); `$(cmd)` in word
-  position does split, which is why `get_current_res` was always fine.
-- **bash 3.2 多字节陷阱（v1.1.3 修复）**：`$VAR` 紧跟全角标点/CJK（如
-  `$OS（`）时，macOS 的 bash 3.2 会把多字节字节吸进变量名，`set -u` 下报
-  `<NAME><乱码>: unbound variable`；zsh 不受影响。`./install.sh`（zsh
-  shebang）正常、`curl … | bash`（管道忽略 shebang → bash 3.2）在
-  `install.sh:28` 直接死（实测）。全仓 13 处已统一为 `${VAR}`，两个测试套件
-  各带扫描用例防回归（`grep -rnE '\$[A-Za-z_][A-Za-z0-9_]*[^ -~]'`）。
-- Only **one positional argument** is accepted — a second one dies with a
-  hint. Previously "last positional wins" silently dropped a leading
-  `@factor` (`vscreen @125% mba13` applied 1470x919 with exit 0).
+  iterated once over a newline blob. All tag loops use `${(f)var}`.
+- **bash 3.2 multibyte trap (v1.1.3 fix)**: `$VAR` followed by full-width
+  punctuation/CJK breaks `set -u` on macOS bash 3.2. Fixed by using `${VAR}`.
+
+### Windows quirks
+
+- **Session isolation**: display APIs (EnumDisplayDevices, ChangeDisplaySettingsEx)
+  only work in the **console session** (where RustDesk captures). SSH, RDP,
+  and SYSTEM scheduled tasks all see only their own session's displays.
+- **sysfs binary attributes** always stat as size 0 — use `cat | wc -c` not `[ -s ]`.
+- **ParsecVDisplay is tray-only** (no CLI in v0.45) — v1.0+ adds the `vdd` CLI.
+- **`$null` vs `[IntPtr]::Zero`**: PowerShell's `$null` gets marshaled as an
+  empty string, not NULL. Use `[IntPtr]::Zero` for P/Invoke null parameters.
 
 ## 8. Versioning & release
 
 ### Version string
 
-A single `VERSION="x.y.z"` constant lives near the top of `vscreen`.
-`vscreen version` (or `-v` / `--version`) prints it.
+A single `VERSION="x.y.z"` constant lives near the top of each backend:
+- `vscreen` (macOS)
+- `vscreen-linux` (Linux)
+- `vscreen-windows.ps1` (Windows, as `$VERSION`)
+
+All three must be kept in sync. The test suites verify this.
 
 ### Self-update with version check
 
@@ -212,7 +235,10 @@ actually upgrade users. No bump, no churn.
 
 ### Cutting a release
 
-1. Bump `VERSION` in `vscreen` if it changed.
+1. Bump `VERSION` in **all three** backends (must stay in sync):
+   - `vscreen` (macOS): `VERSION="x.y.z"`
+   - `vscreen-linux` (Linux): `VERSION="x.y.z"`
+   - `vscreen-windows.ps1` (Windows): `$VERSION = "x.y.z"`
 2. Commit & push to `main`.
 3. Tag + release:
 
