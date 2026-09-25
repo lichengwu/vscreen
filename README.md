@@ -73,23 +73,16 @@ vscreen 1470 919@125      # raw WxH + factor (space-separated, no "x" needed)
 - [BetterDisplay](https://betterdisplay.pro) (`brew install --cask betterdisplay`)
 - `python3` (Xcode Command Line Tools)
 
-### Install & usage
+### Install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lichengwu/vscreen/main/install.sh | bash
 ```
 
-```bash
-vscreen list              # show devices + tiers
-vscreen mbp14             # match MacBook Pro 14" ★
-vscreen mba13@125%        # scale factor
-vscreen 1512 945          # raw resolution (spaces for "x")
-vscreen off               # restore
-vscreen status            # current state
-vscreen update            # self-update
-vscreen version | -v | --version
-vscreen -h | --help
-```
+This auto-installs missing dependencies (Homebrew → BetterDisplay →
+python3) and places the `vscreen` CLI into your PATH.
+
+### Usage
 
 Options: `--no-mirror` (extended desktop), `--print` (preview only).
 
@@ -119,11 +112,16 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for the full macOS architecture.
 - `python3` (for EDID generation)
 - Kernel ≥ 6.x with `/sys/class/drm`
 
-### Install & usage
+### Install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lichengwu/vscreen/main/install.sh | bash
 ```
+
+This auto-installs missing dependencies (python3 via apt/dnf/pacman)
+and places the `vscreen` CLI into your PATH.
+
+### Usage
 
 ```bash
 vscreen provision           # one-time: root install + passwordless rule
@@ -156,14 +154,21 @@ architecture, validation data, and compatibility matrix.
 - PowerShell 5.1+ (pre-installed)
 - [Parsec VDD](https://github.com/nomi-san/parsec-vdd) (installed via `vscreen provision`)
 
-### Install & usage
+### Install
 
 ```powershell
-# One-time setup (run as Administrator from any terminal):
-curl -fsSL https://raw.githubusercontent.com/lichengwu/vscreen/main/install.sh -o install.sh
-bash install.sh   # or run manually
+# One-liner (from PowerShell):
+iwr https://raw.githubusercontent.com/lichengwu/vscreen/main/install.ps1 -OutFile install.ps1
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
 
-# Provision (from RustDesk desktop, as Administrator):
+This auto-installs Parsec VDD driver (if missing) and registry presets
+(requires admin for the driver, works without admin for the CLI).
+
+### Usage
+
+```powershell
+# Provision (one-time, from RustDesk desktop as Administrator):
 vscreen provision           # installs Parsec VDD + registry presets
 
 # Daily usage (from RustDesk desktop — console session):

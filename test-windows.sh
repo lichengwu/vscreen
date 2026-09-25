@@ -119,11 +119,16 @@ else
     bad "Win32 API" "missing ChangeDisplaySettingsEx"
 fi
 
-echo "===== E. install.sh platform dispatch ====="
-if grep -q 'vscreen-windows' install.sh 2>/dev/null; then
-    ok "install.sh references vscreen-windows"
+echo "===== E. install.sh / install.ps1 platform dispatch ====="
+if grep -q 'vscreen-windows\|install.ps1' install.sh 2>/dev/null || [ -f install.ps1 ]; then
+    ok "install.sh references Windows (install.ps1)"
 else
     bad "install.sh" "missing Windows platform dispatch"
+fi
+if [ -f install.ps1 ] && grep -q 'vscreen-windows.ps1' install.ps1 2>/dev/null; then
+    ok "install.ps1 installs vscreen-windows.ps1"
+else
+    bad "install.ps1" "missing vscreen-windows.ps1 reference"
 fi
 
 echo "===== F. Version sync (3 platforms) ====="

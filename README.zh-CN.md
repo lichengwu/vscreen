@@ -72,23 +72,15 @@ vscreen 1470 919@125      # 直接 WxH + 系数（空格分隔，不用打 x）
 - [BetterDisplay](https://betterdisplay.pro)（`brew install --cask betterdisplay`）
 - `python3`（随 Xcode 命令行工具提供）
 
-### 安装 & 使用
+### 安装
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lichengwu/vscreen/main/install.sh | bash
 ```
 
-```bash
-vscreen list              # 查看支持的设备与三档分辨率
-vscreen mbp14             # 匹配 MacBook Pro 14 ★
-vscreen mba13@125%        # 缩放系数
-vscreen 1512 945          # 直接分辨率（空格分隔免切输入法）
-vscreen off               # 恢复
-vscreen status            # 当前状态
-vscreen update            # 自更新
-vscreen version | -v | --version
-vscreen -h | --help
-```
+自动安装缺失依赖（Homebrew → BetterDisplay → python3）并装入 PATH。
+
+### 使用
 
 选项：`--no-mirror` 保持扩展桌面模式；`--print` 只预览不修改。
 
@@ -116,11 +108,15 @@ BetterDisplay 创建一块名为 "vscreen" 的虚拟屏。切换设备复用同�
 - `python3`（EDID 生成）
 - 内核 ≥ 6.x 带 `/sys/class/drm`
 
-### 安装 & 使用
+### 安装
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lichengwu/vscreen/main/install.sh | bash
 ```
+
+自动安装缺失依赖（python3，通过 apt/dnf/pacman）并装入 PATH。
+
+### 使用
 
 ```bash
 vscreen provision           # 一次性：root 安装 + 免密规则
@@ -150,14 +146,20 @@ connector。运行时切换 = sysfs 参数 + detect + VT 循环。已在 Ubuntu
 - PowerShell 5.1+（系统自带）
 - Parsec VDD（由 `vscreen provision` 安装）
 
-### 安装 & 使用
+### 安装
 
 ```powershell
-# 一次性安装（任意终端，管理员）：
-curl -fsSL https://raw.githubusercontent.com/lichengwu/vscreen/main/install.sh -o install.sh
-bash install.sh
+# PowerShell 一行安装：
+iwr https://raw.githubusercontent.com/lichengwu/vscreen/main/install.ps1 -OutFile install.ps1
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
 
-# provision（在 RustDesk 桌面中，管理员）：
+自动安装 Parsec VDD 驱动（管理员时）和注册表 preset，装入 PATH。
+
+### 使用
+
+```powershell
+# provision（一次性，在 RustDesk 桌面中管理员运行）：
 vscreen provision           # 安装 Parsec VDD + 注册表 preset
 
 # 日常使用（在 RustDesk 桌面 —— console 会话中）：

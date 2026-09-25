@@ -1,15 +1,14 @@
-#!/bin/zsh
 # ============================================================================
-# install.sh — 一键安装 vscreen CLI（macOS / Linux）
+# install.sh — One-line installer for vscreen (macOS / Linux)
 #
-# 一行安装（免 clone）：
+# Auto-installs missing dependencies (BetterDisplay, python3) via the
+# platform's package manager, then installs the vscreen CLI into PATH.
+#
+# For Windows, use install.ps1 instead (native PowerShell).
+#
+# Usage:
 #   curl -fsSL https://raw.githubusercontent.com/lichengwu/vscreen/main/install.sh | bash
-# 或本地仓库内： ./install.sh
-#
-# 平台分发：macOS 安装 vscreen（BetterDisplay 后端）；
-#           Linux 安装 vscreen-linux（EDID 固件后端）——命令名统一为 vscreen。
-# 检查依赖 → 装进 PATH → 运行验证
-# pipe 安全：不依赖 cwd 或本地文件，恒从 GitHub raw 拉取脚本。
+#   or locally: ./install.sh
 # ============================================================================
 
 set -euo pipefail
@@ -17,101 +16,175 @@ set -euo pipefail
 REPO="lichengwu/vscreen"
 OS="$(uname -s)"
 
+echo "==> Platform: ${OS}"
+
+# --- Platform dispatch ---
 if [[ "$OS" == "Darwin" ]]; then
-  SRC_NAME="vscreen"              # macOS 后端（zsh + BetterDisplay）
+    SRC_NAME="vscreen"
+    PKG_MGR="brew"
 elif [[ "$OS" == MINGW* ]] || [[ "$OS" == CYGWIN* ]] || [[ "$OS" == MSYS* ]]; then
-  SRC_NAME="vscreen-windows.ps1"  # Windows 后端（PowerShell + Parsec VDD）
-else
-  SRC_NAME="vscreen-linux"        # Linux 后端（bash + EDID 固件覆盖）
-fi
-INST_NAME="vscreen"
-RAW_URL="https://raw.githubusercontent.com/$REPO/main/$SRC_NAME"
-
-echo "==> 平台：${OS}（安装 $SRC_NAME → 命令名 vscreen）"
-
-echo "==> 检查依赖 ..."
-
-# 1. BetterDisplay（仅 macOS）
-if [[ "$OS" == "Darwin" ]]; then
-  if [[ ! -x "/Applications/BetterDisplay.app/Contents/MacOS/BetterDisplay" ]]; then
-    echo "❌ 未检测到 BetterDisplay，请先安装（二选一）："
-    echo "   brew install --cask betterdisplay"
-    echo "   或到 https://betterdisplay.pro 下载安装"
+    echo "❌ Windows detected. Use install.ps1 instead:"
+    echo "   powershell -ExecutionPolicy Bypass -File install.ps1"
+    echo "   or: iwr https://raw.githubusercontent.com/lichengwu/vscreen/main/install.ps1 -OutFile install.ps1; powershell -File install.ps1"
     exit 1
-  fi
-  echo "✓ BetterDisplay"
+else
+    SRC_NAME="vscreen-linux"
+    # Detect package manager
+    if command -v apt-get >/dev/null 2>&1; then
+        PKG_MGR="apt"
+    elif command -v dnf >/dev/null 2>&1; then
+        PKG_MGR="dnf"
+    elif command -v yum >/dev/null 2>&1; then
+        PKG_MGR="yum"
+    elif command -v pacman >/dev/null 2>&1; then
+        PKG_MGR="pacman"
+    elif command -v zypper >/dev/null 2>&1; then
+        PKG_MGR="zypper"
+    else
+        PKG_MGR="none"
+    fi
 fi
 
-# 2. python3（两平台都需要：EDID 生成 / BetterDisplay 输出解析）
+INST_NAME="vscreen"
+RAW_URL="https://raw.githubusercontent.com/${REPO}/main/${SRC_NAME}"
+
+# --- Dependency auto-install ---
+echo "==> Checking dependencies..."
+
+# 1. python3 (needed on macOS + Linux)
 if ! command -v python3 >/dev/null 2>&1; then
-  if [[ "$OS" == "Darwin" ]]; then
-    echo "❌ 缺少 python3（运行 xcode-select --install 安装命令行工具）"
-  else
-    echo "❌ 缺少 python3（sudo apt install python3 / dnf install python3 / pacman -S python）"
-  fi
-  exit 1
+    echo "  python3 not found. Installing..."
+    case "$PKG_MGR" in
+        brew)
+            brew install python 2>&1 | tail -3
+            ;;
+        apt)
+            sudo apt-get update -qq && sudo apt-get install -y -qq python3 2>&1 | tail -3
+            ;;
+        dnf|yum)
+            sudo $PKG_MGR install -y -q python3 2>&1 | tail -3
+            ;;
+        pacman)
+            sudo pacman -S --noconfirm python 2>&1 | tail -3
+            ;;
+        zypper)
+            sudo zypper install -y python3 2>&1 | tail -3
+            ;;
+        none)
+            echo "❌ No package manager found. Please install python3 manually." >&2
+            exit 1
+            ;;
+    esac
+    # Verify
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "❌ Failed to install python3" >&2
+        exit 1
+    fi
+    echo "  ✓ python3 installed"
+else
+    echo "  ✓ python3"
 fi
-echo "✓ python3"
 
-# 3. 选择安装目录（优先用户可写的系统 bin；否则 ~/.local/bin）
+# 2. BetterDisplay (macOS only)
+if [[ "$OS" == "Darwin" ]]; then
+    BD_CHECK="/Applications/BetterDisplay.app/Contents/MacOS/BetterDisplay"
+    if [[ ! -x "$BD_CHECK" ]]; then
+        echo "  BetterDisplay not found. Installing..."
+        if command -v brew >/dev/null 2>&1; then
+            brew install --cask betterdisplay 2>&1 | tail -3
+        else
+            # Install Homebrew first if missing
+            echo "  Homebrew not found. Installing Homebrew..."
+            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+            # Then BetterDisplay
+            if command -v brew >/dev/null 2>&1 || [[ -x /opt/homebrew/bin/brew ]] || [[ -x /usr/local/bin/brew ]]; then
+                # Add brew to PATH for this session
+                if [[ -x /opt/homebrew/bin/brew ]]; then
+                    eval "$(/opt/homebrew/bin/brew shellenv)"
+                elif [[ -x /usr/local/bin/brew ]]; then
+                    eval "$(/usr/local/bin/brew shellenv)"
+                fi
+                brew install --cask betterdisplay 2>&1 | tail -3
+            else
+                echo "❌ Failed to install Homebrew" >&2
+                exit 1
+            fi
+        fi
+        # Verify
+        if [[ ! -x "$BD_CHECK" ]]; then
+            echo "❌ Failed to install BetterDisplay (may need manual approval in System Settings)" >&2
+            echo "   Download from https://betterdisplay.pro and install manually" >&2
+            echo "   Then re-run this installer" >&2
+            exit 1
+        fi
+        echo "  ✓ BetterDisplay installed"
+    else
+        echo "  ✓ BetterDisplay"
+    fi
+fi
+
+# --- Install script ---
+# Choose install directory (prefer user-writable system bin, fallback ~/.local/bin)
 DEST=""
 for d in /opt/homebrew/bin /usr/local/bin; do
-  if [[ -d "$d" && -w "$d" ]]; then
-    DEST="$d"
-    break
-  fi
+    if [[ -d "$d" && -w "$d" ]]; then
+        DEST="$d"
+        break
+    fi
 done
-if [[ -z "$DEST" ]]; then
-  DEST="$HOME/.local/bin"
-  mkdir -p "$DEST"
+if [[ -z "${DEST}" ]]; then
+    DEST="$HOME/.local/bin"
+    mkdir -p "$DEST"
 fi
-echo "==> 安装 $INST_NAME 到 $DEST/"
+echo "==> Installing ${INST_NAME} to ${DEST}/"
 
-# 4. 脚本源：以脚本路径运行（克隆场景 ./install.sh）时用本地仓库；
-#    pipe 场景（curl | bash，$0 是 "bash"）恒从 GitHub 下载，不受当前目录影响
+# Source: local repo if running from clone, else download from GitHub
 SRC=""
-SRC_LOCAL="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/$SRC_NAME"
+SRC_LOCAL="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/${SRC_NAME}"
 if [[ "$0" == */install.sh && -f "$SRC_LOCAL" ]]; then
-  SRC="$SRC_LOCAL"
+    SRC="$SRC_LOCAL"
 else
-  echo "==> 从 GitHub 下载 ..."
-  SRC=$(mktemp)
-  curl -fsSL --connect-timeout 10 --max-time 30 "$RAW_URL" -o "$SRC"
+    echo "  Downloading from GitHub..."
+    SRC=$(mktemp)
+    curl -fsSL --connect-timeout 10 --max-time 30 "$RAW_URL" -o "$SRC"
 fi
 install -m 0755 "$SRC" "$DEST/$INST_NAME"
+rm -f "$SRC" 2>/dev/null || true
 
-# 5. PATH 检查
-if [[ ":$PATH:" != *":$DEST:"* ]]; then
-  echo "⚠️  $DEST 不在 PATH 中，请执行："
-  if [[ "$OS" == "Darwin" ]]; then
-    echo "   echo 'export PATH=\"$DEST:\$PATH\"' >> ~/.zshrc && source ~/.zshrc"
-  else
-    echo "   echo 'export PATH=\"$DEST:\$PATH\"' >> ~/.profile && source ~/.profile"
-  fi
+# --- PATH check ---
+if [[ ":${PATH}:" != *":${DEST}:"* ]]; then
+    echo ""
+    echo "⚠️  ${DEST} is not in your PATH. Add it:"
+    if [[ "$OS" == "Darwin" ]]; then
+        echo "   echo 'export PATH=\"${DEST}:\$PATH\"' >> ~/.zshrc && source ~/.zshrc"
+    else
+        echo "   echo 'export PATH=\"${DEST}:\$PATH\"' >> ~/.profile && source ~/.profile"
+    fi
 fi
 
-# 6. 运行验证（macOS 走 status；Linux 用 version，无需桌面/DRM）
-echo "==> 运行验证 ..."
-if [[ "$OS" == "Darwin" ]]; then
-  "$DEST/$INST_NAME" status || true
-else
-  "$DEST/$INST_NAME" version || true
-fi
+# --- Verify ---
+echo ""
+echo "==> Verifying installation..."
+"$DEST/$INST_NAME" version 2>/dev/null || "$DEST/$INST_NAME" status 2>/dev/null || true
 
-echo
-echo "安装完成 ✅"
-echo "快速开始："
+echo ""
+echo "Installation complete! ✅"
+echo ""
 if [[ "$OS" == "Darwin" ]]; then
-  echo "  vscreen list              # 查看支持的设备与分辨率"
-  echo "  vscreen mbp14             # 匹配 MacBook Pro 14（全屏无黑边）★推荐"
-  echo "  vscreen 1512x945          # 或直接给分辨率"
-  echo "  vscreen off               # 恢复纯物理显示"
-  echo "  vscreen update            # 自更新"
-else
-  echo "  vscreen list                      # 查看支持的设备与分辨率"
-  echo "  sudo vscreen mba13                # 匹配客户端设备（EDID 覆盖，需 root）"
-  echo "  vscreen mba13@125% --print        # 预览缩放换算（免 root）"
-  echo "  sudo vscreen off                  # 恢复显示器原始 EDID"
-  echo "  vscreen update                    # 自更新"
-  echo " 详见 docs/linux-port-design.md（机制与兼容性）"
+    echo "Quick start:"
+    echo "  vscreen list              # supported devices & resolutions"
+    echo "  vscreen mbp14             # match MacBook Pro 14 ★"
+    echo "  vscreen mba13@125%        # scale factor"
+    echo "  vscreen 1512x945          # raw resolution"
+    echo "  vscreen off               # restore"
+    echo "  vscreen update            # self-update"
+elif [[ "$SRC_NAME" == "vscreen-linux" ]]; then
+    echo "Quick start:"
+    echo "  vscreen list              # supported devices & resolutions"
+    echo "  vscreen provision         # one-time setup (sudo + passwordless)"
+    echo "  vscreen mba13             # match device (after provision)"
+    echo "  vscreen off               # restore"
+    echo "  vscreen update            # self-update"
+    echo ""
+    echo "  See docs/linux-port-design.md for details"
 fi
