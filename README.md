@@ -176,6 +176,24 @@ vscreen mba13@125% --print  # preview (no root needed)
 vscreen off                 # restore the display's original EDID
 ```
 
+## Windows (experimental)
+
+The same CLI is available for Windows 10/11 via **Parsec VDD** (IddCx
+virtual display driver) — validated live on Windows 11 Pro. Custom
+resolutions via registry presets, HiDPI 2x via per-monitor 200% scaling.
+See [docs/windows-port-design.md](docs/windows-port-design.md) for the
+mechanism, validation data, and architecture.
+
+```powershell
+vscreen provision           # one-time: install Parsec VDD + presets (admin)
+vscreen mba13               # from RustDesk desktop (console session)
+vscreen mba13@125% --print  # preview (no display changes)
+vscreen off                 # remove virtual display
+```
+
+**Important**: Windows display APIs only work in the console session.
+Run vscreen from the RustDesk desktop (not RDP or SSH).
+
 ## Contributing
 
 - Bugs & feature requests: [open an issue](https://github.com/lichengwu/vscreen/issues)

@@ -19,6 +19,8 @@ OS="$(uname -s)"
 
 if [[ "$OS" == "Darwin" ]]; then
   SRC_NAME="vscreen"              # macOS 后端（zsh + BetterDisplay）
+elif [[ "$OS" == MINGW* ]] || [[ "$OS" == CYGWIN* ]] || [[ "$OS" == MSYS* ]]; then
+  SRC_NAME="vscreen-windows.ps1"  # Windows 后端（PowerShell + Parsec VDD）
 else
   SRC_NAME="vscreen-linux"        # Linux 后端（bash + EDID 固件覆盖）
 fi

@@ -149,6 +149,22 @@ vscreen mba13@125% --print  # 预览换算（免 root）
 vscreen off                 # 恢复显示器原始 EDID
 ```
 
+## Windows（实验性）
+
+同一套 CLI 已支持 Windows 10/11——基于 **Parsec VDD**（IddCx 虚拟显示驱动），
+已在 Windows 11 Pro 上实机验证。注册表 preset 自定义分辨率、per-monitor 200%
+缩放实现 HiDPI。详见 [docs/windows-port-design.md](docs/windows-port-design.md)。
+
+```powershell
+vscreen provision           # 一次性：安装 Parsec VDD + preset（管理员）
+vscreen mba13               # 在 RustDesk 桌面（console 会话）中运行
+vscreen mba13@125% --print  # 预览（不修改显示器）
+vscreen off                 # 移除虚拟屏
+```
+
+**注意**：Windows 显示 API 仅在 console 会话中有效。
+请从 RustDesk 桌面运行（不要用 RDP 或 SSH）。
+
 ## 参与贡献
 
 - 问题反馈 / 功能建议：[提个 issue](https://github.com/lichengwu/vscreen/issues)
