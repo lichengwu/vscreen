@@ -58,6 +58,7 @@ DEVICES=(
   mbp16     "MacBook Pro 16|1728x1117|1728x1080|3456x2234"
   imac24    "iMac 24|2240x1260|2240x1236|4480x2520"
   studio    "Studio Display|2560x1440|2560x1416|5120x2880"
+  mon27     "27in 4K Monitor|1920x1080|1920x1056|3840x2160"
   xdr       "Pro Display XDR|3008x1692|3008x1668|6016x3384"
   # iPad：iPadOS 全屏满血无菜单栏，故 compensated == native（不减）
   ipadpro13  "iPad Pro 13|1376x1032|1376x1032|2752x2064"
@@ -75,6 +76,8 @@ SYNONYMS=(
   imac       imac24
   prodisplay  xdr
   xdr6k       xdr
+  monitor27  mon27
+  4k27       mon27
   # iPad 同义词
   pro13       ipadpro13
   pro129      ipadpro129
@@ -83,7 +86,7 @@ SYNONYMS=(
 )
 
 # 列表展示用的稳定顺序
-DEVICE_ORDER=(mba13 mba15 mbp14 mbp16 imac24 studio xdr ipadpro13 ipadpro129 ipadair13)
+DEVICE_ORDER=(mba13 mba15 mbp14 mbp16 imac24 studio mon27 xdr ipadpro13 ipadpro129 ipadair13)
 
 # ---------- 帮助 ----------
 print_help() {
@@ -114,7 +117,8 @@ print_help() {
 设备别名：
   mba13      MacBook Air 13"      mba15      MacBook Air 15"
   mbp14      MacBook Pro 14"      mbp16      MacBook Pro 16"
-  imac24     iMac 24"            studio     Studio Display
+  imac24     iMac 24"            mon27      27in 4K Monitor
+  studio     Studio Display
   xdr        Pro Display XDR
   ipadpro13  iPad Pro 13"        ipadpro129 iPad Pro 12.9"
   ipadair13  iPad Air 13"

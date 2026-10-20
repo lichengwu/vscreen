@@ -42,6 +42,7 @@ $DEVICES = @{
     "mbp16"      = @{Name="MacBook Pro 16";    Native="1728x1117"; Comp="1728x1080"; Full="3456x2234"}
     "imac24"     = @{Name="iMac 24";           Native="2240x1260"; Comp="2240x1236"; Full="4480x2520"}
     "studio"     = @{Name="Studio Display";    Native="2560x1440"; Comp="2560x1416"; Full="5120x2880"}
+    "mon27"      = @{Name="27in 4K Monitor";   Native="1920x1080"; Comp="1920x1056"; Full="3840x2160"}
     "xdr"        = @{Name="Pro Display XDR";   Native="3008x1692"; Comp="3008x1668"; Full="6016x3384"}
     "ipadpro13"  = @{Name="iPad Pro 13";       Native="1376x1032"; Comp="1376x1032"; Full="2752x2064"}
     "ipadpro129" = @{Name="iPad Pro 12.9";     Native="1366x1024"; Comp="1366x1024"; Full="2732x2048"}
@@ -51,10 +52,11 @@ $DEVICES = @{
 $SYNONYMS = @{
     "air13"="mba13"; "air15"="mba15"; "pro14"="mbp14"; "pro16"="mbp16"
     "imac"="imac24"; "prodisplay"="xdr"; "xdr6k"="xdr"
+    "monitor27"="mon27"; "4k27"="mon27"
     "pro13"="ipadpro13"; "pro129"="ipadpro129"; "ipadair"="ipadair13"; "ipad13"="ipadair13"
 }
 
-$DEV_ORDER = @("mba13","mba15","mbp14","mbp16","imac24","studio","xdr","ipadpro13","ipadpro129","ipadair13")
+$DEV_ORDER = @("mba13","mba15","mbp14","mbp16","imac24","studio","mon27","xdr","ipadpro13","ipadpro129","ipadair13")
 
 # --- Registry paths ---
 $VDD_REG = "HKLM:\SOFTWARE\Parsec\vdd"

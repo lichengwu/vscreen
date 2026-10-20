@@ -33,6 +33,7 @@ dev_entry() {
     mbp16)      echo "1728x1117|1728x1080|3456x2234" ;;
     imac24)     echo "2240x1260|2240x1236|4480x2520" ;;
     studio)     echo "2560x1440|2560x1416|5120x2880" ;;
+    mon27)      echo "1920x1080|1920x1056|3840x2160" ;;
     xdr)        echo "3008x1692|3008x1668|6016x3384" ;;
     ipadpro13)  echo "1376x1032|1376x1032|2752x2064" ;;
     ipadpro129) echo "1366x1024|1366x1024|2732x2048" ;;
@@ -48,6 +49,7 @@ dev_synonym() {
     pro16)           echo mbp16 ;;
     imac)            echo imac24 ;;
     prodisplay|xdr6k) echo xdr ;;
+    monitor27|4k27)  echo mon27 ;;
     pro13)           echo ipadpro13 ;;
     pro129)          echo ipadpro129 ;;
     ipadair|ipad13)  echo ipadair13 ;;
@@ -59,12 +61,12 @@ dev_name() {
     mba13) echo "MacBook Air 13" ;;   mba15) echo "MacBook Air 15" ;;
     mbp14) echo "MacBook Pro 14" ;;   mbp16) echo "MacBook Pro 16" ;;
     imac24) echo "iMac 24" ;;         studio) echo "Studio Display" ;;
-    xdr) echo "Pro Display XDR" ;;
+    mon27) echo "27in 4K Monitor" ;;   xdr) echo "Pro Display XDR" ;;
     ipadpro13) echo "iPad Pro 13" ;;  ipadpro129) echo "iPad Pro 12.9" ;;
     ipadair13) echo "iPad Air 13" ;;
   esac
 }
-DEV_ORDER="mba13 mba15 mbp14 mbp16 imac24 studio xdr ipadpro13 ipadpro129 ipadair13"
+DEV_ORDER="mba13 mba15 mbp14 mbp16 imac24 studio mon27 xdr ipadpro13 ipadpro129 ipadair13"
 
 # ---------- 帮助 ----------
 print_help() {

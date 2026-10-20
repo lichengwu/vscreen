@@ -39,14 +39,15 @@ vscreen off          # 恢复原始显示
 | `mbp16` | MacBook Pro 16" | **1728x1080** | 1728x1117 | 3456x2234 |
 | `imac24` | iMac 24" | **2240x1236** | 2240x1260 | 4480x2520 |
 | `studio` | Studio Display | **2560x1416** | 2560x1440 | 5120x2880 |
+| `mon27` | 27寸 4K 显示器 | **1920x1056** | 1920x1080 | 3840x2160 |
 | `xdr` | Pro Display XDR | **3008x1668** | 3008x1692 | 6016x3384 |
 | `ipadpro13` | iPad Pro 13" | **1376x1032** | 1376x1032 | 2752x2064 |
 | `ipadpro129` | iPad Pro 12.9" | **1366x1024** | 1366x1024 | 2732x2048 |
 | `ipadair13` | iPad Air 13" | **1366x1024** | 1366x1024 | 2732x2048 |
 
 同义词：`air13`→`mba13`、`air15`→`mba15`、`pro14`→`mbp14`、`pro16`→`mbp16`、
-`imac`→`imac24`、`prodisplay`/`xdr6k`→`xdr`、`pro13`→`ipadpro13`、
-`pro129`→`ipadpro129`、`ipadair`/`ipad13`→`ipadair13`。
+`imac`→`imac24`、`monitor27`/`4k27`→`mon27`、`prodisplay`/`xdr6k`→`xdr`、
+`pro13`→`ipadpro13`、`pro129`→`ipadpro129`、`ipadair`/`ipad13`→`ipadair13`。
 
 ## 缩放系数（@ 后缀）—— 全平台通用
 
