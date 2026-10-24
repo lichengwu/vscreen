@@ -16,7 +16,7 @@
 
 set -euo pipefail
 
-VERSION="1.2.0"
+VERSION="1.2.1"
 EDID_DIR=/lib/firmware/edid
 # VSCREEN_DRM_SYS / VSCREEN_PARAM：测试注入缝（docker/CI 无真实 DRM
 # 时指向 fake 树；生产不设置，用真实 sysfs）
@@ -474,7 +474,7 @@ do_provision() {  # 一次性授权：root 安装 + 限定路径免密规则；�
   echo "  vscreen mba13@125% --print   # 预览本来就免 root"
 }
 
-# --- 自更新（拉 vscreen-linux；版本比较只升不降）---
+# --- 自更新（拉 vscreen-linux；版本+内容双检，只升不降）---
 ver_newer() {  # $1 候选 $2 当前 → 0=更新
   local a1 a2 a3 b1 b2 b3
   IFS='.' read -r a1 a2 a3 <<EOF
@@ -497,28 +497,57 @@ EOF
 
 do_update() {
   [ -w "$0" ] || ensure_root
-  local tmp remote_ver url rc
-  url="https://raw.githubusercontent.com/lichengwu/vscreen/main/vscreen-linux"
+  local tmp remote_ver rc fetch_url sep verify
+  # VSCREEN_LINUX_RAW_URL：测试注缝（file:// 假远端）；默认走 GitHub raw
+  fetch_url="${VSCREEN_LINUX_RAW_URL:-https://raw.githubusercontent.com/lichengwu/vscreen/main/vscreen-linux}"
+  # CDN 缓存穿透：raw 的边缘缓存可能给出旧字节；对 http(s) 附时间戳查询串
+  # 强制回源，file:// 注入不附加（query 会破坏文件路径）。
+  case "$fetch_url" in
+    http://*|https://*)
+      case "$fetch_url" in *\?*) sep="&" ;; *) sep="?" ;; esac
+      fetch_url="${fetch_url}${sep}t=$(date +%s)"
+      ;;
+  esac
   tmp=$(mktemp)
   echo "检查更新 ..."
-  curl -fsSL --connect-timeout 10 --max-time 30 "$url" -o "$tmp" \
-    || { echo "错误：下载失败（${url}）——请检查网络后重试" >&2; rm -f "$tmp"; exit 1; }
+  curl -fsSL --connect-timeout 10 --max-time 30 "$fetch_url" -o "$tmp" \
+    || { echo "错误：下载失败（${fetch_url}）——请检查网络后重试" >&2; rm -f "$tmp"; exit 1; }
   remote_ver=$(sed -n 's/^VERSION="\([^"]*\)".*/\1/p' "$tmp" | head -1)
   if [ -z "$remote_ver" ]; then
     echo "⚠️  无法解析远端版本号，跳过更新" >&2
     rm -f "$tmp"; return 0
   fi
   if [ "$remote_ver" = "$VERSION" ]; then
-    echo "已是最新版本 v$VERSION ✅"; rm -f "$tmp"; return 0
+    # 版本号相同 ≠ 内容相同（v1.2.0 mon27 事故：功能变更忘递增版本号，
+    # 版本门把新内容挡在门外，update 报“已是最新”而新功能从未落盘）。
+    # 逐字节比较：一致才是真“已是最新”；不一致则同步远端内容。
+    if cmp -s "$tmp" "$0"; then
+      echo "已是最新版本 v${VERSION} ✅"; rm -f "$tmp"; return 0
+    fi
+  else
+    # 只升不降：远端不比本地新（更旧 / 无法比较）时拒绝覆盖
+    rc=0; ver_newer "$remote_ver" "$VERSION" || rc=$?
+    if [ "$rc" -ne 0 ]; then
+      echo "跳过：本地 v${VERSION} 不旧于远端 v${remote_ver}（远端可能是缓存旧版，未覆盖）"
+      rm -f "$tmp"; return 0
+    fi
   fi
-  rc=0; ver_newer "$remote_ver" "$VERSION" || rc=$?
-  if [ "$rc" -ne 0 ]; then
-    echo "跳过：本地 v$VERSION 不旧于远端 v${remote_ver}（远端可能是缓存旧版，未覆盖）"
-    rm -f "$tmp"; return 0
-  fi
+  # 安装并校验：落盘字节必须与下载一致——“报成功但没生效”要变成响亮的错误
+  verify="${tmp}.verify"
+  cp "$tmp" "$verify"
   chmod +x "$tmp"
-  mv "$tmp" "$0" || { rm -f "$tmp"; echo "错误：无法写入 $0（权限？）" >&2; exit 1; }
-  echo "已更新 v$VERSION -> v$remote_ver ✅（重新运行即生效）"
+  mv "$tmp" "$0" || { rm -f "$tmp" "$verify"; echo "错误：无法写入 ${0}（权限？）" >&2; exit 1; }
+  if ! cmp -s "$verify" "$0"; then
+    rm -f "$verify"
+    echo "错误：安装校验失败——落盘内容与下载内容不一致（${0}）" >&2
+    exit 1
+  fi
+  rm -f "$verify"
+  if [ "$remote_ver" = "$VERSION" ]; then
+    echo "已同步远端最新内容 ✅（版本号未变 v${VERSION}——发布侧忘递增版本？重新运行即生效）"
+  else
+    echo "已更新 v${VERSION} -> v${remote_ver} ✅（重新运行即生效）"
+  fi
 }
 
 # ---------- 执行 ----------

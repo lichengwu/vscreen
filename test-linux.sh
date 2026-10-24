@@ -98,6 +98,36 @@ echo "版本："
 cur_ver=$(sed -n 's/^VERSION="\([^"]*\)".*/\1/p' vscreen-linux | head -1)
 ./vscreen-linux version | grep -q "v$cur_ver" && ok "version 命令（动态断言）" || bad "version" "版本不符"
 
+echo "自更新保护（file:// 假远端，不碰网络）："
+sed 's/^VERSION="[^"]*"/VERSION="1.0.0"/'  vscreen-linux > /tmp/vscreenl_remote_old
+sed 's/^VERSION="[^"]*"/VERSION="9.9.9"/'  vscreen-linux > /tmp/vscreenl_remote_new
+cp vscreen-linux /tmp/vscreenl_remote_eq
+cp vscreen-linux /tmp/vscreenl_remote_eq_diff
+echo "# TEST: same-version content change" >> /tmp/vscreenl_remote_eq_diff
+
+run_upd() {  # $1=假远端路径；UPD_OUT 记录输出，副本每次重置
+  cp -p vscreen-linux /tmp/vscreen_linux_upd_test
+  UPD_OUT=$(VSCREEN_LINUX_RAW_URL="file://$1" /tmp/vscreen_linux_upd_test update 2>&1)
+}
+skip_case() {  # skip_case <描述> <远端文件> <期望消息片段> —— 应跳过且副本不变
+  run_upd "$2"
+  if diff -q vscreen-linux /tmp/vscreen_linux_upd_test >/dev/null && [[ "$UPD_OUT" == *"$3"* ]]; then
+    ok "$1"
+  else
+    bad "$1" "副本被改动或消息不符（${UPD_OUT}）"
+  fi
+}
+skip_case "旧远端不降级"                      /tmp/vscreenl_remote_old   "未覆盖"
+skip_case "同版本同内容：跳过（cmp 判定）"   /tmp/vscreenl_remote_eq    "已是最新"
+run_upd /tmp/vscreenl_remote_eq_diff
+if grep -q 'same-version content change' /tmp/vscreen_linux_upd_test && [[ "$UPD_OUT" == *"已同步"* ]]; then
+  ok "同版本不同内容：同步安装"
+else
+  bad "同版本不同内容：同步安装" "副本未更新或消息不符（${UPD_OUT}）"
+fi
+run_upd /tmp/vscreenl_remote_new
+if grep -q 'VERSION="9.9.9"' /tmp/vscreen_linux_upd_test; then ok "新远端正常升级"; else bad "新远端正常升级" "未升级到 9.9.9"; fi
+
 # pitfall 扫描：$VAR 紧跟多字节字符（全角标点/CJK）——bash 3.2 会把多字节
 # 字节吸进变量名，`set -u` 下报 unbound。脚本要能在 macOS bash 3.2 跑（管道
 # 执行忽略 shebang），所以这里对全仓统一把关。

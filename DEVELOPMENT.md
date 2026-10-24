@@ -187,6 +187,14 @@ core of requirement #4; breaking it makes the remote side see multiple screens.
   iterated once over a newline blob. All tag loops use `${(f)var}`.
 - **bash 3.2 multibyte trap (v1.1.3 fix)**: `$VAR` followed by full-width
   punctuation/CJK breaks `set -u` on macOS bash 3.2. Fixed by using `${VAR}`.
+- **Version-only update gate (v1.2.1 fix, live-caught)**: `mon27` shipped as
+  new functionality under an *unchanged* `VERSION="1.2.0"`; `vscreen update`
+  then printed `已是最新版本 v1.2.0 ✅` on machines still running the old
+  1.2.0 content — "says updated, new feature never lands". The updater now
+  byte-compares (`cmp`) content when versions match, busts the raw-URL CDN
+  cache, and verifies the installed bytes before claiming success. Rule:
+  **any functional change bumps `VERSION` — the content sync is the net,
+  not the excuse**.
 
 ### Windows quirks
 
@@ -209,33 +217,48 @@ A single `VERSION="x.y.z"` constant lives near the top of each backend:
 
 All three must be kept in sync. The test suites verify this.
 
-### Self-update with version check
+### Self-update: version check + content check (v1.2.1)
 
 `vscreen update` downloads the latest `vscreen` from GitHub raw (10s connect
 / 30s total timeout — a stalled TLS handshake used to hang update forever),
-extracts its `VERSION=` line, and compares:
+extracts its `VERSION=` line, and decides:
 
-- **Same version** → discard, print `已是最新版本 vX.Y.Z`, do nothing.
+- **Same version, same bytes** (`cmp` the download against `SCRIPT_PATH`) →
+  discard, print `已是最新版本 vX.Y.Z`, do nothing.
+- **Same version, different bytes** → **still install** (sync the remote
+  content), print `已同步远端最新内容`. This is the mon27 safety net: a
+  release that forgot to bump `VERSION` must not leave users stranded.
 - **Strictly newer** (`ver_newer`: 1–4 numeric segments, zero-padded —
   `"2.0"` ≡ `"2.0.0.0"`) → replace `SCRIPT_PATH`, print `已更新 vOld -> vNew`.
-- **Older / equal / uncomparable** (non-numeric segments like `1.2.0-beta`)
-  → skip with its own message (fail-safe, never clobber).
+- **Older / uncomparable** (non-numeric segments like `1.2.0-beta`) →
+  skip with its own message (fail-safe, never clobber).
 - **Download failure** → fast, clean error; mv failure → clean error and
   temp cleanup.
+- After `mv`, the installed file is `cmp`-verified against the download —
+  a mismatch aborts with a loud error instead of a lying ✅.
+- The raw URL fetch carries a `?t=<epoch>` cache-buster (http(s) only) so
+  Fastly's edge cache cannot serve stale bytes as "the remote".
 - If `vscreen` is invoked through a symlink, update replaces the *symlink*,
   not its target (install.sh never symlinks; relevant only for manual
   setups).
 
-`VSCREEN_RAW_URL` overrides the raw URL — the test seam `test.sh` uses to
-point update at `file://` fake remotes and exercise upgrade/downgrade
-behavior without touching the network.
+`VSCREEN_RAW_URL` (macOS) / `VSCREEN_LINUX_RAW_URL` (Linux) override the raw
+URL — the test seams `test.sh` / `test-linux.sh` use to point update at
+`file://` fake remotes and exercise upgrade/downgrade/same-version-content
+behavior without touching the network. `file://` URLs never get the
+cache-buster (a query string would break the path).
 
-So bumping `VERSION` and pushing to `main` is what makes `vscreen update`
-actually upgrade users. No bump, no churn.
+Bumping `VERSION` and pushing to `main` is still the canonical release
+path — the same-version content sync is a *safety net*, not a substitute:
+no bump means no clear upgrade path and noisy "已同步" messages instead of
+`已更新 vOld -> vNew`.
 
 ### Cutting a release
 
-1. Bump `VERSION` in **all three** backends (must stay in sync):
+1. Bump `VERSION` in **all three** backends (must stay in sync).
+   **Every functional change — new device, new flag, any behavior change —
+   requires a bump.** (The v1.2.1 updater syncs same-version content as a
+   safety net, but a release that skips the bump has no clean upgrade path.)
    - `vscreen` (macOS): `VERSION="x.y.z"`
    - `vscreen-linux` (Linux): `VERSION="x.y.z"`
    - `vscreen-windows.ps1` (Windows): `$VERSION = "x.y.z"`

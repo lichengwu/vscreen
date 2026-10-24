@@ -31,7 +31,7 @@ if ($Args -contains "--print") { $script:PrintFlag = $true; $Args = @($Args | Wh
 if ($Args -contains "--logical") { $script:LogicalFlag = $true; $Args = @($Args | Where-Object { $_ -ne "--logical" }) }
 
 $ErrorActionPreference = "Stop"
-$VERSION = "1.2.0"
+$VERSION = "1.2.1"
 
 # --- Device table (sync with macOS vscreen / Linux vscreen-linux) ---
 # Format: "alias" -> @{Name="..."; Native="WxH"; Comp="WxH"; Full="WxH"}

@@ -98,6 +98,24 @@ if grep -q 'VERSION="1.2.10"' /tmp/vscreen_upd_test; then ok "数值段比较 1.
 run_upd /tmp/vscreen_remote_new
 if grep -q 'VERSION="9.9.9"' /tmp/vscreen_upd_test; then ok "新远端正常升级"; else bad "新远端正常升级" "未升级到 9.9.9"; fi
 
+# 同版本但内容不同（v1.2.0 mon27 事故回归：功能变更忘递增版本号，
+# 旧版 update 报“已是最新”而新功能从未落盘）：必须同步安装远端内容
+cp vscreen /tmp/vscreen_remote_eq_diff
+echo "# TEST: same-version content change" >> /tmp/vscreen_remote_eq_diff
+run_upd /tmp/vscreen_remote_eq_diff
+if grep -q 'same-version content change' /tmp/vscreen_upd_test && [[ "$UPD_OUT" == *"已同步"* ]]; then
+  ok "同版本不同内容：同步安装"
+else
+  bad "同版本不同内容：同步安装" "副本未更新或消息不符（${UPD_OUT}）"
+fi
+# 同版本同内容才允许跳过（cmp 逐字节，非版本号相等即跳过）
+run_upd /tmp/vscreen_remote_eq
+if diff -q vscreen /tmp/vscreen_upd_test >/dev/null && [[ "$UPD_OUT" == *"已是最新"* ]]; then
+  ok "同版本同内容：跳过（cmp 判定）"
+else
+  bad "同版本同内容：跳过（cmp 判定）" "副本被改动或消息不符（${UPD_OUT}）"
+fi
+
 echo "版本与帮助："
 ./vscreen version    | grep -q "v$cur_ver"         && ok "version 命令（动态断言）" || bad "version 命令" "版本号不符"
 ./vscreen --version  | grep -q "^vscreen v"        && ok "--version 旗标"      || bad "--version 旗标" "无输出"
