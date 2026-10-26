@@ -97,6 +97,13 @@ run_upd /tmp/vscreen_remote_num
 if grep -q 'VERSION="1.2.10"' /tmp/vscreen_upd_test; then ok "数值段比较 1.2.10 > 1.2.0 升级"; else bad "数值段比较升级" "未升级到 1.2.10"; fi
 run_upd /tmp/vscreen_remote_new
 if grep -q 'VERSION="9.9.9"' /tmp/vscreen_upd_test; then ok "新远端正常升级"; else bad "新远端正常升级" "未升级到 9.9.9"; fi
+# 安装模式必须是 0755（对齐 install.sh 的 install -m 0755；曾因 mktemp 600
+# + chmod +x 落成 711，group/other 丢读权限——解释型脚本不可读即不可执行）
+if [[ "$(stat -f '%Lp' /tmp/vscreen_upd_test)" == 755 ]]; then
+  ok "升级后权限 0755"
+else
+  bad "升级后权限 0755" "got $(stat -f '%Lp' /tmp/vscreen_upd_test)"
+fi
 
 # 同版本但内容不同（v1.2.0 mon27 事故回归：功能变更忘递增版本号，
 # 旧版 update 报“已是最新”而新功能从未落盘）：必须同步安装远端内容

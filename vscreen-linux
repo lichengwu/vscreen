@@ -16,7 +16,7 @@
 
 set -euo pipefail
 
-VERSION="1.2.1"
+VERSION="1.2.2"
 EDID_DIR=/lib/firmware/edid
 # VSCREEN_DRM_SYS / VSCREEN_PARAM：测试注入缝（docker/CI 无真实 DRM
 # 时指向 fake 树；生产不设置，用真实 sysfs）
@@ -535,7 +535,9 @@ do_update() {
   # 安装并校验：落盘字节必须与下载一致——“报成功但没生效”要变成响亮的错误
   verify="${tmp}.verify"
   cp "$tmp" "$verify"
-  chmod +x "$tmp"
+  # 规范模式 0755（对齐 install.sh 的 install -m 0755）：mktemp 建出 600，
+  # 只 chmod +x 会落成 711——group/other 丢读权限，解释型脚本不可读即不可执行
+  chmod 0755 "$tmp"
   mv "$tmp" "$0" || { rm -f "$tmp" "$verify"; echo "错误：无法写入 ${0}（权限？）" >&2; exit 1; }
   if ! cmp -s "$verify" "$0"; then
     rm -f "$verify"

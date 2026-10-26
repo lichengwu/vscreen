@@ -127,6 +127,16 @@ else
 fi
 run_upd /tmp/vscreenl_remote_new
 if grep -q 'VERSION="9.9.9"' /tmp/vscreen_linux_upd_test; then ok "新远端正常升级"; else bad "新远端正常升级" "未升级到 9.9.9"; fi
+# 安装模式必须是 0755（对齐 install.sh 的 install -m 0755；曾因 mktemp 600
+# + chmod +x 落成 711，group/other 丢读权限——解释型脚本不可读即不可执行）
+mode_of() {  # $1 文件 → 数字模式（macOS stat -f / Linux stat -c）
+  if [ "$(uname)" = Linux ]; then stat -c '%a' "$1"; else stat -f '%Lp' "$1"; fi
+}
+if [ "$(mode_of /tmp/vscreen_linux_upd_test)" = 755 ]; then
+  ok "升级后权限 0755"
+else
+  bad "升级后权限 0755" "got $(mode_of /tmp/vscreen_linux_upd_test)"
+fi
 
 # pitfall 扫描：$VAR 紧跟多字节字符（全角标点/CJK）——bash 3.2 会把多字节
 # 字节吸进变量名，`set -u` 下报 unbound。脚本要能在 macOS bash 3.2 跑（管道

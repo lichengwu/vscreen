@@ -39,7 +39,7 @@ REPO="lichengwu/vscreen"
 RAW_URL="${VSCREEN_RAW_URL:-https://raw.githubusercontent.com/$REPO/main/vscreen}"
 # zsh 函数内 $0 = 函数名，须在顶层捕获真实脚本路径（update 的 mv 目标）
 SCRIPT_PATH="$0"
-VERSION="1.2.1"
+VERSION="1.2.2"
 
 # 本工具管理的唯一虚拟屏名（= “本工具创建”的身份标识，固定不变）
 SCREEN_NAME="vscreen"
@@ -558,7 +558,9 @@ do_update() {
   # 安装并校验：落盘字节必须与下载一致——“报成功但没生效”要变成响亮的错误
   verify="${tmp}.verify"
   cp "$tmp" "$verify"
-  chmod +x "$tmp"
+  # 规范模式 0755（对齐 install.sh 的 install -m 0755）：mktemp 建出 600，
+  # 只 chmod +x 会落成 711——group/other 丢读权限，解释型脚本不可读即不可执行
+  chmod 0755 "$tmp"
   mv "$tmp" "$SCRIPT_PATH" \
     || { rm -f "$tmp" "$verify"; echo "错误：无法写入 ${SCRIPT_PATH}（权限？）" >&2; exit 1; }
   if ! cmp -s "$verify" "$SCRIPT_PATH"; then

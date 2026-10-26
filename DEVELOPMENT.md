@@ -187,6 +187,13 @@ core of requirement #4; breaking it makes the remote side see multiple screens.
   iterated once over a newline blob. All tag loops use `${(f)var}`.
 - **bash 3.2 multibyte trap (v1.1.3 fix)**: `$VAR` followed by full-width
   punctuation/CJK breaks `set -u` on macOS bash 3.2. Fixed by using `${VAR}`.
+- **Update mode regression (v1.2.2 fix, live-caught)**: `mktemp` creates
+  600 and `chmod +x` yielded **711** — group/other lost *read*, and an
+  interpreted script (zsh/bash shebang) that cannot be read cannot be
+  executed by other users. The updater now installs with the canonical
+  `chmod 0755`, matching `install -m 0755` in install.sh. `install.sh`
+  also gained the `?t=<epoch>` CDN cache-buster on its raw download (same
+  stale-bytes family as the update fix).
 - **Version-only update gate (v1.2.1 fix, live-caught)**: `mon27` shipped as
   new functionality under an *unchanged* `VERSION="1.2.0"`; `vscreen update`
   then printed `已是最新版本 v1.2.0 ✅` on machines still running the old
@@ -237,7 +244,9 @@ extracts its `VERSION=` line, and decides:
 - After `mv`, the installed file is `cmp`-verified against the download —
   a mismatch aborts with a loud error instead of a lying ✅.
 - The raw URL fetch carries a `?t=<epoch>` cache-buster (http(s) only) so
-  Fastly's edge cache cannot serve stale bytes as "the remote".
+  Fastly's edge cache cannot serve stale bytes as "the remote"; the
+  installed file gets `chmod 0755` (the canonical `install -m 0755` mode —
+  `install.sh`'s raw download carries the same cache-buster).
 - If `vscreen` is invoked through a symlink, update replaces the *symlink*,
   not its target (install.sh never symlinks; relevant only for manual
   setups).

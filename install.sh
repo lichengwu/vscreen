@@ -146,6 +146,14 @@ if [[ "$0" == */install.sh && -f "$SRC_LOCAL" ]]; then
 else
     echo "  Downloading from GitHub..."
     SRC=$(mktemp)
+    # CDN 缓存穿透：对 http(s) 附时间戳查询串强制回源，防止刚 push 完就
+    # 装到 Fastly 边缘缓存的旧版本字节（与 vscreen update 的同款处理）
+    case "$RAW_URL" in
+        http://*|https://*)
+            case "$RAW_URL" in *\?*) _sep="&" ;; *) _sep="?" ;; esac
+            RAW_URL="${RAW_URL}${_sep}t=$(date +%s)"
+            ;;
+    esac
     curl -fsSL --connect-timeout 10 --max-time 30 "$RAW_URL" -o "$SRC"
 fi
 install -m 0755 "$SRC" "$DEST/$INST_NAME"
